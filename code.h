@@ -670,6 +670,72 @@ static inline Token *code_op_category(AI *ai, Token *op) {
 
 #define CODE_MAX_OPS 8
 /* §6.812 中文数字当参数（"七进制"里的七）：只在参数位出现时生效。 */
+/* §6.820 **概念层关键词（模式）**：关键词可以写成 `最大{值|的数|元素}`，匹配时展开成
+ * 若干具体说法再比 —— 学到的知识不再是某一句字面，而是一族说法（这是“迁移”的前置）。
+ * 限制（照实说）：最多 4 个分支、展开上限 32 种、每个分支 ≤ 24 字节，不支持嵌套。 */
+#define KW_PAT_MAX  32
+static inline int code_kw_expand(const char *pat, char out[KW_PAT_MAX][96], int maxn) {
+    int n = 1;
+    out[0][0] = 0;
+    for (const char *p = pat; *p && n < maxn; ) {
+        if (*p == 123) {
+            const char *end = strchr(p + 1, 125);
+            if (!end) break;
+            const char *alts[5]; size_t lens[5]; int na = 0;
+            const char *q = p + 1;
+            while (q < end && na < 4) {
+                const char *bar = q;
+                while (bar < end && *bar != 124) bar++;
+                alts[na] = q; lens[na] = (size_t)(bar - q); na++;
+                q = bar + 1;
+            }
+            if (na == 0) { p++; continue; }
+            char tmp[KW_PAT_MAX][96];
+            int tn = 0;
+            for (int i = 0; i < n; ++i)
+                for (int j = 0; j < na && tn < maxn; ++j) {
+                    size_t ol = strlen(out[i]);
+                    if (ol + lens[j] + 1 >= sizeof out[0]) continue;
+                    memcpy(tmp[tn], out[i], ol);
+                    memcpy(tmp[tn] + ol, alts[j], lens[j]);
+                    tmp[tn][ol + lens[j]] = 0;
+                    tn++;
+                }
+            memcpy(out, tmp, sizeof tmp);
+            n = tn;
+            p = end + 1;
+        } else {
+            for (int i = 0; i < n; ++i) {
+                size_t ol = strlen(out[i]);
+                if (ol + 2 < sizeof out[0]) { out[i][ol] = *p; out[i][ol + 1] = 0; }
+            }
+            p++;
+        }
+    }
+    return n;
+}
+
+/* 在 desc 里找关键词（支持模式）；返回命中位置（NULL = 没命中），命中长度写 *mlen */
+static inline const char *code_kw_find(const char *desc, const char *kw, size_t *mlen) {
+    if (!desc || !kw || !kw[0]) return NULL;
+    if (!strchr(kw, 123)) {
+        const char *hit = strstr(desc, kw);
+        if (hit && mlen) *mlen = strlen(kw);
+        return hit;
+    }
+    static char ex[KW_PAT_MAX][96];
+    int n = code_kw_expand(kw, ex, KW_PAT_MAX);
+    const char *best = NULL; size_t bl = 0;
+    for (int i = 0; i < n; ++i) {
+        const char *hit = strstr(desc, ex[i]);
+        if (!hit) continue;
+        size_t l = strlen(ex[i]);
+        if (!best || hit < best || (hit == best && l > bl)) { best = hit; bl = l; }
+    }
+    if (best && mlen) *mlen = bl;
+    return best;
+}
+
 static inline int code_cn_num(const char *p) {
     static const struct { const char *w; int v; } T[] = {
         {"十", 10}, {"一", 1}, {"二", 2}, {"三", 3}, {"四", 4},
@@ -691,7 +757,7 @@ static inline double code_cover_ratio(const char *desc, Token *unit, uint8_t d_k
     for (size_t j = 0; j < unit->count; ++j) {
         const AssocEntry *e = &token_assocs_ro(unit)[j];
         if (!e->main || e->dyn != d_kw || !e->main->name) continue;
-        if (strstr(desc, e->main->name)) hit += strlen(e->main->name);
+        size_t _ml = 0; if (code_kw_find(desc, e->main->name, &_ml)) hit += _ml;
     }
     return (double)hit / (double)dl;
 }
@@ -803,7 +869,7 @@ static inline int code_chain(AI *ai, const char *desc, int min_ops, int need_par
                 for (size_t j = 0; j < ct->count; ++j) {
                     const AssocEntry *e = &token_assocs_ro(ct)[j];
                     if (!e->main || e->dyn != d_word || !e->main->name) continue;
-                    const char *hit = strstr(desc, e->main->name);
+                    size_t _ml2 = 0; const char *hit = code_kw_find(desc, e->main->name, &_ml2);
                     if (!hit) continue;
                     size_t p = (size_t)(hit - desc);
                     if (p < desc_cat_pos) { desc_cat = ct; desc_cat_pos = p; }
@@ -826,12 +892,13 @@ static inline int code_chain(AI *ai, const char *desc, int min_ops, int need_par
         for (size_t j = 0; j < t->count; ++j) {
             const AssocEntry *e = &token_assocs_ro(t)[j];
             if (!e->main || e->dyn != d_kw || !e->main->name) continue;
-            const char *hit = strstr(desc, e->main->name);
+            size_t _ml3 = 0;
+            const char *hit = code_kw_find(desc, e->main->name, &_ml3);
             if (!hit) continue;
             size_t p = (size_t)(hit - desc);
             /* 同一位置取更长的词（"平方和"优于"平方"），不同位置取最早 */
-            if (p < best_pos || (p == best_pos && strlen(e->main->name) > best_len)) {
-                best_pos = p; best_len = strlen(e->main->name);
+            if (p < best_pos || (p == best_pos && _ml3 > best_len)) {
+                best_pos = p; best_len = _ml3;
             }
         }
         if (best_pos == (size_t)-1) continue;
@@ -1152,7 +1219,7 @@ static inline int code_chain(AI *ai, const char *desc, int min_ops, int need_par
                 for (size_t j = 0; j < kt->count; ++j) {
                     const AssocEntry *e = &token_assocs_ro(kt)[j];
                     if (!e->main || e->dyn != d_shape || !e->main->name) continue;
-                    const char *hit = strstr(desc, e->main->name);
+                    size_t _ml2 = 0; const char *hit = code_kw_find(desc, e->main->name, &_ml2);
                     if (!hit) continue;
                     /* §6.814 只有**出现在运算词之前**的形状词才算"输入形状"。 */
                     if ((size_t)(hit - desc) < pos[0]) { other_kind = 1; break; }
