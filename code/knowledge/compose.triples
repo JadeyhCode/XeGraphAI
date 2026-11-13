@@ -97,13 +97,13 @@ int main(void) {\
 }
 配方:阶乘	关键词	阶乘
 配方:阶乘	模板	模板:命令行整数
-配方:阶乘	主体	    long r = 1; for (long i = 2; i <= N; i++) r *= i; printf("%ld\n", r);\
+配方:阶乘	主体	    long r = 1; for (long i = 2; i <= N; i++) r *= i; printf("%ld\n", r);
     long t = 1; for (long i = 2; i <= 5; i++) t *= i; if (t != 120) ok = 0;
 配方:幂	关键词	幂
 配方:幂	关键词	次幂
 配方:幂	关键词	指数
 配方:幂	模板	模板:命令行两整数
-配方:幂	主体	    long r = 1; for (long i = 0; i < B; i++) r *= A; printf("%ld\n", r);\
+配方:幂	主体	    long r = 1; for (long i = 0; i < B; i++) r *= A; printf("%ld\n", r);
     long t = 1; for (long i = 0; i < 10; i++) t *= 2; if (t != 1024) ok = 0;
 配方:各位数字和	关键词	数字和
 配方:各位数字和	关键词	各位数字
@@ -189,7 +189,7 @@ int main(void) {\
 配方:反转整数	关键词	倒过来
 配方:反转整数	排除	数组
 配方:反转整数	模板	模板:命令行整数
-配方:反转整数	主体	    long x = N, r = 0; while (x) { r = r * 10 + x % 10; x /= 10; } printf("%ld\n", r);\
+配方:反转整数	主体	    long x = N, r = 0; while (x) { r = r * 10 + x % 10; x /= 10; } printf("%ld\n", r);
     long t = 123, tr = 0; while (t) { tr = tr * 10 + t % 10; t /= 10; } if (tr != 321) ok = 0;
 配方:偶数判断	关键词	偶数
 配方:偶数判断	模板	模板:命令行整数
@@ -226,7 +226,7 @@ int main(void) {\
 配方:二进制转十进制	关键词	二进制字符串
 配方:二进制转十进制	关键词	二进制转十进制
 配方:二进制转十进制	模板	模板:命令行字符串
-配方:二进制转十进制	主体	    long r = 0; for (char *p = s; *p; p++) { if (*p != '0' && *p != '1') { ok = 0; break; } r = r * 2 + (*p - '0'); } printf("%ld\n", r);\
+配方:二进制转十进制	主体	    long r = 0; for (char *p = s; *p; p++) { if (*p != '0' && *p != '1') { ok = 0; break; } r = r * 2 + (*p - '0'); } printf("%ld\n", r);
     const char *q = "1011"; long t = 0; for (; *q; q++) t = t * 2 + (*q - '0'); if (t != 11) ok = 0;
 
 配方:奇数判断	关键词	奇数
@@ -1131,3 +1131,25 @@ int main(int argc, char **argv) {\
 运算:区间整除和	排除	的个数
 运算:区间整除和	语句	{ x = 0; for (long i = 1; i <= <Q>; i++) if (i % <P> == 0) x += i; }
 运算:区间整除和	模板	模板:命令行整数
+
+# 三层片段依赖（A→B→C）与成环（2026-11-13，验依赖排序的深度与拒绝路径）
+片段:c3_base	代码	static long c3_base(long n) { long s = 0; for (long i = 1; i <= n; i++) s += i; return s; }
+片段:c3_mid	代码	static long c3_mid(long n) { return c3_base(n) + 1; }
+片段:c3_top	代码	static long c3_top(long n) { return c3_mid(n) * 2; }
+任务:三层依赖	关键词	三层依赖
+任务:三层依赖	模板	模板:命令行整数
+任务:三层依赖	用	片段:c3_top
+任务:三层依赖	用	片段:c3_mid
+任务:三层依赖	用	片段:c3_base
+任务:三层依赖	主体	    long r = c3_top(N);\
+    printf("%ld\n", r);
+    if (r != 62) ok = 0;
+片段:huan_a	代码	static long huan_a(long n) { return huan_b(n); }
+片段:huan_b	代码	static long huan_b(long n) { return huan_a(n); }
+任务:环路	关键词	环路
+任务:环路	模板	模板:命令行整数
+任务:环路	用	片段:huan_a
+任务:环路	用	片段:huan_b
+任务:环路	主体	    long r = huan_a(N);\
+    printf("%ld\n", r);
+

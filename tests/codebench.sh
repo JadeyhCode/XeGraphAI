@@ -103,6 +103,7 @@ cat > tasks.txt <<'EOF'
 写一个程序：统计 2..N 里素数的个数（复用已有的素数判断）。
 写一个程序：把数组排序后取中位数。
 写一个程序：做素数计数（片段有依赖，被调用者写在了后面）。
+写一个程序：输出三层依赖片段算出来的和。
 EOF
 TASKS=tasks.txt
 N_TASKS=$(grep -c . "$TASKS" || true)
@@ -286,6 +287,20 @@ else
     bad "C4 换错骨架的结果不对（骨架任务 $C4_SKELETON 个；异常 $C4_BAD 处）" \
         "$(grep -la '组合：' c4set/r*.txt 2>/dev/null | head -2 | tr '\n' ' ')"
 fi
+# C5 **依赖成环**：a 调 b、b 调 a ⇒ 必须**明确拒绝**（打印“成环”），不写文件、不假装能拼。
+echo "== C5 依赖成环 ⇒ 明确拒绝 =="
+rm -f "$ROOT/_t/work/synth_环路.c"
+printf '::act on\n::code synth 写一个程序：环路。\n::quit\n' > cyc.in
+( cd "$ROOT" && "$WORK/build_aip" --model "$MODEL" < "$WORK/cyc.in" > "$WORK/cyc.txt" 2>&1 ) || true
+C5_BAD=0
+grep -qa '依赖成环' cyc.txt || C5_BAD=$((C5_BAD + 1))
+grep -qa '测试全绿' cyc.txt && C5_BAD=$((C5_BAD + 1))
+[ -f "$ROOT/_t/work/synth_环路.c" ] && C5_BAD=$((C5_BAD + 1))
+if [ "$C5_BAD" -eq 0 ]; then
+    ok "C5 依赖成环：说清“成环”、不写文件、不报绿"
+else
+    bad "C5 依赖成环的处理不对（异常 $C5_BAD 处）" "$(grep -a '合成' cyc.txt | head -1)"
+fi
 echo "== D 段：扩图到 ≥10⁶ 边 ⇒ B 段不下降 =="
 D_PASS=0
 if [ -s "$MODEL" ]; then
@@ -340,20 +355,20 @@ fi
 echo
 printf 'A 修复段：%d / %d\n' "$A_PASS" "$A_TOTAL"
 printf 'B 合成段：%d / %d（阶段四 M2 目标 ≥5/6）\n' "$B_PASS" "$B_TOTAL"
-printf 'C 消融：C1 全量消融后 %d / %d；C2 只删片段 %d / %d；C3 删关键词 %d / %d；C4 换错骨架 %d / %d\n' \
-    "${C1_PASS:-0}" "$N_TASKS" "${C2_PASS:-0}" "$N_TASKS" "${C3_PASS:-0}" "$N_TASKS" "${C4_PASS:-0}" "$N_TASKS"
+printf 'C 消融：C1 全量消融后 %d / %d；C2 只删片段 %d / %d；C3 删关键词 %d / %d；C4 换错骨架 %d / %d；C5 成环异常 %d\n' \
+    "${C1_PASS:-0}" "$N_TASKS" "${C2_PASS:-0}" "$N_TASKS" "${C3_PASS:-0}" "$N_TASKS" "${C4_PASS:-0}" "$N_TASKS" "${C5_BAD:-0}"
 printf 'D 扩图：%d / %d（要求与 B 段相同）\n' "${D_PASS:-0}" "$N_TASKS"
 [ -n "${1:-}" ] && [ "$1" = "--keep" ] || rm -rf "$WORK/src" "$WORK"/bset "$WORK"/c1set "$WORK"/c2set "$WORK"/dset \
     "$WORK"/synth* "$WORK"/run.in "$WORK"/out.txt "$WORK"/*.triples "$WORK"/big.bin "$WORK"/abl1.bin "$WORK"/abl2.bin \
     "$WORK"/big_model.bin "$WORK"/abl1_model.bin "$WORK"/abl2_model.bin 2>/dev/null
 if [ "$A_PASS" -eq "$A_TOTAL" ] && [ "$B_PASS" -eq "$B_TOTAL" ] && \
    [ "$C1_PASS" -eq 0 ] && [ "$C1_BADREASON" -eq 0 ] && [ "$C2_BAD" -eq 0 ] && \
-   [ "$C3_PASS" -eq 0 ] && [ "$C4_BAD" -eq 0 ] && [ "$D_OK" -eq 1 ]; then
+   [ "$C3_PASS" -eq 0 ] && [ "$C4_BAD" -eq 0 ] && [ "$C5_BAD" -eq 0 ] && [ "$D_OK" -eq 1 ]; then
     printf 'PASS codebench（A %d/%d；B %d/%d；C1 全量消融 0/%d；C2 片段承重；C3 关键词承重；C4 骨架承重；D 扩图 %d/%d）\n' \
         "$A_PASS" "$A_TOTAL" "$B_PASS" "$B_TOTAL" "$N_TASKS" "$D_PASS" "$N_TASKS"
     exit 0
 else
-    printf 'FAIL codebench（A %d/%d；B %d/%d；C1 %d；C2 异常 %d；C3 %d；C4 异常 %d；D %d）\n' \
-        "$A_PASS" "$A_TOTAL" "$B_PASS" "$B_TOTAL" "${C1_PASS:-0}" "$C2_BAD" "${C3_PASS:-0}" "${C4_BAD:-0}" "$D_OK"
+    printf 'FAIL codebench（A %d/%d；B %d/%d；C1 %d；C2 异常 %d；C3 %d；C4 异常 %d；C5 异常 %d；D %d）\n' \
+        "$A_PASS" "$A_TOTAL" "$B_PASS" "$B_TOTAL" "${C1_PASS:-0}" "$C2_BAD" "${C3_PASS:-0}" "${C4_BAD:-0}" "${C5_BAD:-0}" "$D_OK"
     exit 1
 fi
