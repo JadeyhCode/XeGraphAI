@@ -112,6 +112,8 @@ def gen_cases(seed=20261113):
     return cases
 
 # ---------- ③ 起草模板库：描述关键词 → 算子语句（小、明确、可审） ----------
+DRAFTED_KW = []   # 本轮起草过的 (算子名, 关键词)，供 --generalize 用
+
 DRAFTS = {
     "元素之和": ("运算:元素之和", "{ long t2 = 0; for (int i = 0; i < n; i++) t2 += v[i]; x = t2; }", None),
     "输出最大值": ("运算:数组最大值2", "{ long m = v[0]; for (int i = 1; i < n; i++) if (v[i] > m) m = v[i]; x = m; }", None),
@@ -234,6 +236,9 @@ def draft_triples(case):
                 f"{name}\t模板\t{tmpl}",
                 f"{name}\t语句\t{stmt}",
             ]
+            for v in sorted(kws):
+                if (name, v) not in DRAFTED_KW:
+                    DRAFTED_KW.append((name, v))
             if "<P>" in stmt:
                 lines.append(f"{name}\t参数\tP")
             if outnode:
@@ -245,6 +250,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default=os.path.join(ROOT, "code/code_model.bin"))
     ap.add_argument("--keep", action="store_true")
+    ap.add_argument("--generalize", action="store_true",
+                    help="自举后把起草的关键词泛化（去掉 输出/所有/元素 前缀），用能力门验收，掉了就回滚")
+    ap.add_argument("--eval", action="store_true", help="自举后跑 blind19/20/21，量能力是否迁移")
     ap.add_argument("--generate", type=int, default=0, metavar="N",
                     help="自己出题：从算子代数生成 N 道（0 = 用内置 24 道）")
     args = ap.parse_args()
@@ -328,6 +336,41 @@ def main():
         else:
             print(f"  起草 {name} ⇒ 仍 {ok2}/{tot2}（留作反例）")
 
+    if args.generalize and DRAFTED_KW:
+        import hashlib
+        backup = os.path.join(WORK, "m_pre_generalize.bin")
+        shutil.copyfile(model, backup)
+        gen_lines = []
+        for name, kw in DRAFTED_KW:
+            for pre in ("输出所有元素", "输出所有元素之", "输出矩阵", "输出", "所有元素", "元素"):
+                if kw.startswith(pre) and len(kw) - len(pre) >= 2:
+                    gen_lines.append(f"{name}\t关键词\t{kw[len(pre):]}")
+                    break
+        if gen_lines:
+            gf = os.path.join(WORK, "generalize.triples")
+            open(gf, "w", encoding="utf-8").write("\n".join(sorted(set(gen_lines))) + "\n")
+            subprocess.run([os.path.join(ROOT, "build_aip"), "--model", model],
+                           input=f"::ingest {os.path.relpath(gf, ROOT)}\n::save {model}\n::quit\n".encode(),
+                           cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=600)
+            print(f"\n== 泛化：给 {len(set(gen_lines))} 条起草词加短关键词，用能力门验收 ==")
+            env2 = dict(os.environ); env2["AIP_CAPBENCH"] = "1"; env2["AIP_CODE_MODEL"] = model
+            pr = subprocess.run(["sh", os.path.join(ROOT, "tests/capbench.sh")],
+                                cwd=ROOT, env=env2, stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, timeout=3600)
+            out = pr.stdout.decode("utf-8", "replace")
+            ok = ("PASS capbench" in out)
+            print("  能力门：" + ("PASS（保留泛化）" if ok else "FAIL（回滚泛化）"))
+            if not ok:
+                shutil.copyfile(backup, model)
+    if args.eval:
+        print("\n== 迁移检验：拿自举后的模型跑盲测（AIP_CODE_MODEL 指向副本）==")
+        env = dict(os.environ); env["AIP_CODE_MODEL"] = model
+        for g in (19, 20, 21):
+            pr = subprocess.run(["python3", os.path.join(ROOT, f"tools/code_blind{g}.py")],
+                                cwd=ROOT, env=env, stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, timeout=1200)
+            tail = [l for l in pr.stdout.decode("utf-8", "replace").split("\n") if "=>" in l]
+            print(f"  blind{g}: {tail[-1] if tail else '（无输出）'}")
     total = len(cases)
     print(f"\n== 汇总 ==\n  自举前 {before}/{total}；自举后 {after}/{total}；起草 {drafted}；无模板拒绝 {rejected}")
     if not args.keep:

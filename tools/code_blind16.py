@@ -24,7 +24,7 @@ BLIND16 = [
 ]
 
 def main():
-    model = os.path.join(ROOT, "code/code_model.bin")
+    model = os.environ.get("AIP_CODE_MODEL") or os.path.join(ROOT, "code/code_model.bin")
     p = r = w = 0
     for t in BLIND16:
         st, got, out = judge(t, model)
