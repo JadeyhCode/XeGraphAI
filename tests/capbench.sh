@@ -37,7 +37,7 @@ HT=$(printf "%s\n" "$H" | wc -l | tr -d " ")
 HT=$((HT * 8))
 printf "%-12s %6s %6s %6s\n" "hidden" "$HP" "0" "$((HT - HP))" | tee -a "$OUT"
 
-for g in 11 12 13 14 15 16 17 18; do
+for g in 11 12 13 14 15 16 17 18 19; do
     R=$(run_py "tools/code_blind$g.py")
     set -- $R
     printf "%-12s %6s %6s %6s\n" "blind$g" "${1:-0}" "${2:-0}" "${3:-0}" | tee -a "$OUT"
