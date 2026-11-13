@@ -39,6 +39,9 @@ def _lower(t): return t.lower()
 def _reverse(t): return t[::-1]
 def _pal(t): return "yes" if t == t[::-1] else "no"
 def _count_vowels(t): return sum(1 for c in t.lower() if c in "aeiou")
+def _mat_sum(x): return sum(sum(r) for r in x)
+def _mat_max(x): return max(max(r) for r in x)
+def _mat_diag(x): return sum(x[i][i] for i in range(min(len(x), len(x[0]))))
 
 CASES = [
     dict(desc="读入一行整数（标准输入），输出所有元素之和。", fn=_sum, fmt="int"),
@@ -62,6 +65,10 @@ CASES = [
     dict(desc="读入一行字符串（标准输入），倒过来输出。", fn=_reverse, fmt="str", inp="str"),
     dict(desc="读入一行字符串（标准输入），判断是不是回文（输出 yes 或 no）。", fn=_pal, fmt="str", inp="str"),
     dict(desc="读入一行字符串（标准输入），输出元音字母的个数。", fn=_count_vowels, fmt="int", inp="str"),
+    # —— 矩阵族（inp=mat：第一行 行数 列数，接着元素）——
+    dict(desc="读入一个矩阵（标准输入），输出矩阵所有元素之和。", fn=_mat_sum, fmt="int", inp="mat"),
+    dict(desc="读入一个矩阵（标准输入），输出矩阵中的最大值。", fn=_mat_max, fmt="int", inp="mat"),
+    dict(desc="读入一个矩阵（标准输入），输出主对角线上元素的和。", fn=_mat_diag, fmt="int", inp="mat"),
     # —— 参数化两步（考“描述里的数字能不能填进去”）——
     dict(desc="读入一行整数（标准输入），输出所有元素之和再乘 2。", fn=lambda v: sum(v) * 2, fmt="int"),
     dict(desc="读入一行整数（标准输入），输出所有元素之和再乘 3。", fn=lambda v: sum(v) * 3, fmt="int"),
@@ -93,6 +100,8 @@ def gen_cases(seed=20261113):
     cases = []
     for phrase, fn, fmt in _ARR_OPS:
         cases.append(dict(desc=f"读入一行整数（标准输入），{phrase}。", fn=fn, fmt=fmt))
+    for phrase, fn in (("输出矩阵所有元素之和", _mat_sum), ("输出矩阵中的最大值", _mat_max)):
+        cases.append(dict(desc=f"读入一个矩阵（标准输入），{phrase}。", fn=fn, fmt="int", inp="mat"))
     for base_phrase, base_fn in (("输出所有元素之和", _sum), ("输出最大值", _max), ("输出最小值", _min)):
         for k in (2, 3, 5):
             cases.append(dict(desc=f"读入一行整数（标准输入），{base_phrase}再乘 {k}。",
@@ -122,6 +131,9 @@ DRAFTS = {
     "输出最大值再减": ("运算:最大减参数", "{ long m = v[0]; for (int i = 1; i < n; i++) if (v[i] > m) m = v[i]; x = m - <P>; }", None),
     "输出最小值再减": ("运算:最小减参数", "{ long m = v[0]; for (int i = 1; i < n; i++) if (v[i] < m) m = v[i]; x = m - <P>; }", None),
     "元素之和再减": ("运算:和减参数", "{ long t2 = 0; for (int i = 0; i < n; i++) t2 += v[i]; x = t2 - <P>; }", None),
+    "矩阵所有元素之和": ("运算:矩阵元素和", "{ long t2 = 0; for (int i = 0; i < rr && i < 16; i++) for (int j = 0; j < cc && j < 16; j++) t2 += m[i][j]; x = t2; }", None, "模板:标准输入矩阵"),
+    "矩阵中的最大值": ("运算:矩阵最大值2", "{ long b = m[0][0]; for (int i = 0; i < rr && i < 16; i++) for (int j = 0; j < cc && j < 16; j++) if (m[i][j] > b) b = m[i][j]; x = b; }", None, "模板:标准输入矩阵"),
+    "主对角线上元素的和": ("运算:主对角线和", "{ long t2 = 0; int k2 = rr < cc ? rr : cc; for (int i = 0; i < k2; i++) t2 += m[i][i]; x = t2; }", None, "模板:标准输入矩阵"),
     "输出最小值的": ("运算:最小乘参数", "{ long m = v[0]; for (int i = 1; i < n; i++) if (v[i] < m) m = v[i]; x = m * <P>; }", None),
     "输出最大值的": ("运算:最大乘参数", "{ long m = v[0]; for (int i = 1; i < n; i++) if (v[i] > m) m = v[i]; x = m * <P>; }", None),
     "倒序输出这些数": ("运算:数组倒序输出", 'for (int i = n - 1; i >= 0; i--) printf(i == n - 1 ? "%ld" : " %ld", v[i]); printf("\\n");', "打印:无"),
@@ -134,6 +146,12 @@ def rand_case(case, rng):
         n = rng.randint(1, 8)
         t = "".join(rng.choice(alphabet) for _ in range(n))
         return t + "\n", t
+    if case.get("inp") == "mat":
+        r0 = rng.randint(1, 3)
+        c0 = rng.randint(1, 3)
+        m0 = [[rng.randint(-9, 9) for _ in range(c0)] for _ in range(r0)]
+        lines = [f"{r0} {c0}"] + [" ".join(str(x) for x in row) for row in m0]
+        return "\n".join(lines) + "\n", m0
     n = rng.randint(1, 6)
     v = [rng.randint(-9, 9) for _ in range(n)]
     return " ".join(str(x) for x in v) + "\n", v
@@ -204,14 +222,16 @@ def draft_triples(case):
     # 选**最长**的匹配短语（"元素之和再乘"优先于"元素之和"，否则参数化复合永远排不上）
     hit = [ph for ph in DRAFTS if ph in case["desc"]]
     for phrase in sorted(hit, key=len, reverse=True)[:1]:
-        name, stmt, outnode = DRAFTS[phrase]
+        spec = DRAFTS[phrase]
+        name, stmt, outnode = spec[0], spec[1], spec[2]
+        tmpl = spec[3] if len(spec) > 3 else "模板:标准输入整数数组"
         if True:
             kws = {phrase}
             for junk in ("的", "所有", "全部", "每个", "一共", "是不是", "是否", "判断"):
                 kws |= {v.replace(junk, "") for v in list(kws)}
             kws = {v for v in kws if len(v) >= 2}
             lines = [f"{name}\t关键词\t{v}" for v in sorted(kws)] + [
-                f"{name}\t模板\t模板:标准输入整数数组",
+                f"{name}\t模板\t{tmpl}",
                 f"{name}\t语句\t{stmt}",
             ]
             if "<P>" in stmt:
