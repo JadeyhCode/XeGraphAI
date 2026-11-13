@@ -725,6 +725,7 @@ static inline int code_chain(AI *ai, const char *desc, int min_ops, int need_par
             }
         }
         if (best_pos == (size_t)-1) continue;
+        if (getenv("AIP_CHAINDBG")) fprintf(stderr, "[chain] 命中 %s @%zu\n", t->name, best_pos);
         const char *st = NULL;
         for (size_t j = 0; j < t->count; ++j) {
             const AssocEntry *e = &token_assocs_ro(t)[j];
@@ -916,6 +917,7 @@ static inline int code_chain(AI *ai, const char *desc, int min_ops, int need_par
         }
         n = keep;
     }
+    if (getenv("AIP_CHAINDBG")) fprintf(stderr, "[chain] 覆盖后 n=%d (min=%d)\n", n, min_ops);
     if (n < min_ops) return -1;
     for (int i = 1; i < n; ++i) {
         for (int j = i; j > 0 && pos[j] < pos[j - 1]; --j) {
@@ -941,6 +943,7 @@ static inline int code_chain(AI *ai, const char *desc, int min_ops, int need_par
         const AssocEntry *e = &token_assocs_ro(ops[0])[j];
         if (e->main && e->dyn == d_tp) { tmpl = e->main; break; }
     }
+    if (getenv("AIP_CHAINDBG")) fprintf(stderr, "[chain] 模板=%s\n", tmpl ? tmpl->name : "(无)");
     if (!tmpl) return -1;
     tmpl = code_pick_template(ai, tmpl, desc);
     /* §6.730 标量输入不能跑数组/字符串/矩阵算子（"判断它是不是小于零"里的 1 曾被当成参数，
@@ -1043,6 +1046,9 @@ static inline int code_chain(AI *ai, const char *desc, int min_ops, int need_par
             const AssocEntry *e = &token_assocs_ro(ktok)[j];
             if (e->main && e->dyn == d_single) { ok_single = 1; break; }
         }
+        /* §6.810 关键词**足够长**（≥3 个汉字 = 9 字节）时，单条也算具体：
+         * "平方根"不该被 §6.717 的"整数种类不标单链"挡死（那是为了不让"平方"这类短词抢走配方）。 */
+        if (!ok_single && mlen[0] >= 9) ok_single = 1;
         if (!ok_single) return -1;
     }
     /* §6.718 额外的局部变量也来自数据：运算 --[声明]--> 变量名（如两个结果的 y） */
