@@ -69,6 +69,8 @@ int main(int argc, char **argv) {\
     printf("%s\n", ok ? "ok fib" : "FAIL fib");\
     return ok ? 0 : 1;\
 }
+任务:最值平均	排除	取整
+任务:最值平均	排除	四舍五入
 任务:最值平均	排除	位置
 任务:最值平均	排除	相邻
 任务:最值平均	关键词	最大值
