@@ -263,3 +263,4 @@ english|sh tests/english.sh
 # 目标（网页搜索）：::web parse 罐头 HTML 抽标题/链接/摘要、实体解码、空页面照实说、
 # 联网关着必须拒绝。不联网（live 只做手工记录，见 docs/web.md）。
 web|sh tests/web.sh
+xe|sh tests/xe.sh
