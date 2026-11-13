@@ -56,6 +56,8 @@ int main(int argc, char **argv) {
     AI *A = ai_load_file(model);
     AI *B = ai_load_file(model);
     if (!A || !B) { printf("读不到 %s\n", model); return 1; }
+    ai_embed_build(A);            /* §6.804 emb 惰性：探针要测共享，先让两边有 emb */
+    ai_embed_build(B);
 
     /* 共享前先记一份"行为基线" */
     int f1_before = relation_ok(A, "猫", "属于", "动物");
@@ -120,6 +122,7 @@ int main(int argc, char **argv) {
     /* ---------- ⑥ 三个脑：省的是"每多一个脑一份" ---------- */
     {
         AI *X = ai_load_file(model), *Y = ai_load_file(model), *Z = ai_load_file(model);
+        ai_embed_build(X);        /* §6.804：源要有 emb；dst 未建也能直接共享 */
         size_t nx = pool_share_emb(Y->pool, X->pool);
         size_t ny = pool_share_emb(Z->pool, X->pool);
         size_t saved = aip_buf_shared_bytes(EMB_DIM);

@@ -3107,6 +3107,15 @@ static inline void ai_embed_build_impl(AI *ai) {
     size_t n = p->count;
     if (n == 0) return;
 
+    /* §6.804 emb 惰性分配：建词时不占内存，真要算 emb 了才在这里统一补齐。
+     * 补齐失败就照旧走"没有 emb"的路径（读侧都判空），不炸。 */
+    for (size_t i = 0; i < n; ++i) {
+        Token *t = p->tokens[i];
+        if (!t || t->emb) continue;
+        t->emb = (int8_t *)calloc(EMB_DIM, 1);
+        if (!t->emb) return;
+    }
+
     long _t0 = _emb_ms();
     int32_t *acc = (int32_t *)calloc(n * EMB_DIM, sizeof(int32_t));
     int64_t *marg = (int64_t *)calloc(n, sizeof(int64_t));

@@ -3392,6 +3392,9 @@ int main(int argc, char **argv) {
                                     nb->brain = m2;
                                     nb->brain->rel_verify_hook = aip_rel_verify;
                                     aip_shell_mirror_lead(nb->brain);
+                                    /* §6.804 emb 惰性：fork 的语义是"共享底层 emb"，
+                                     * 这里显式建一次（用户显式动作，代价可接受）；不建就共享到 0 个词。 */
+                                    ai_embed_build(parent);   /* 源要有 emb；dst 未建也能直接共享 */
                                     size_t shared = pool_share_emb(nb->brain->pool, parent->pool);
                                     g_brains[sloti] = nb;
                                     a = nb;

@@ -356,6 +356,7 @@ int main(int argc, char **argv) {
         AI *kids[3];
         for (int i = 0; i < 3; ++i) kids[i] = ai_load_file(model);
         if (!base || !kids[0] || !kids[1] || !kids[2]) { printf("读不到 %s\n", model); return 1; }
+        ai_embed_build(base);   /* §6.804 emb 惰性：共享的**源**要有 emb；dst 未建也能直接共享 */
         size_t shared = 0;
         for (int i = 0; i < 3; ++i) shared += pool_share_emb(kids[i]->pool, base->pool);
         ok(shared == 3u * base->pool->count, "③ 三个兄弟脑都共享到同一个源（emb 引用计数）");

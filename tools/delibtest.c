@@ -633,6 +633,7 @@ static void test_analogy_polarity(void) {
     Think *t = think_of(ai);
     Token *cat = T(ai, "猫"), *fish = T(ai, "鱼"), *like = T(ai, "像的");
     (void)token_tag_rel(like, fish, REL_LIKE, REL_BOOST);   /* 像的 喜欢 鱼 */
+    ai_embed_build(ai);         /* §6.804 emb 惰性分配：下面要直接写 emb，先把所有词建好 */
     /* 让 猫 与 像的 的表示完全相同 → 余弦 1.0 → 借最近邻会借到它的态度 */
     int8_t v[EMB_DIM];
     emb_randvec(4242u, v);

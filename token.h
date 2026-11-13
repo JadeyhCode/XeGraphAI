@@ -1067,7 +1067,14 @@ static inline size_t pool_share_emb(TokenPool *dst, const TokenPool *src) {
     for (size_t i = 0; i < dst->count; ++i) {
         Token *a = dst->tokens[i];
         Token *b = src->tokens[i];
-        if (!a->emb || !b->emb) continue;
+        if (!b->emb) continue;
+        if (!a->emb) {
+            /* §6.804 dst 的 emb 可能还没建（惰性）⇒ 直接共享 src 的那一块，
+             * 不必先给 dst 分配再释放（那样峰值内存白高一倍）。 */
+            int8_t *sp0 = (int8_t *)aip_buf_share(b->emb);
+            if (sp0) { a->emb = sp0; n++; }
+            continue;
+        }
         if (a->emb == b->emb) { n++; continue; }       /* 已经共享过 */
         /* §6.693 先问"能不能共享"，成功才放旧的；不能共享就**复制一份**（各持一份）。
          * 老写法是"先 release 再 share"，share 失败（表满）时两个池会指着同一块却没计数
@@ -1106,11 +1113,11 @@ static inline Token *pool_token(TokenPool *p, const char *name, void *meaning) {
         memcpy(copy, name, len + 1);
         t->name = copy;
     }
-    t->emb = (int8_t *)calloc(EMB_DIM, 1);       /* 全 0 = 还没算过 */
-    if (!t->emb) {
-        free((void *)t->name); free(t);
-        return NULL;
-    }
+    /* §6.804 分布式表示**惰性分配**：建词时不占 1 KB，第一次真正要读 emb 时
+     * （ai_embed_build/ensure）再统一分配。实测 1.1M 边真知识模型有 65.9 万词，
+     * 每词 1 KB 就是 674 MB —— 占 RSS 的 60%，而默认路径根本不读 emb。
+     * 读侧本来就大多判 `!t->emb`；`aip_buf_own` 那条路径也先判空。 */
+    t->emb = NULL;
 
     t->id = (uint32_t)p->count;
     t->meaning = meaning;

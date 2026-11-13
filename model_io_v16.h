@@ -56,7 +56,22 @@ static inline uint64_t mr_uv(MReader *r) {
 #define MIO16_E_LAST   0x0400u
 #define MIO16_E_MEM    0x0800u
 
+/* 栈上小缓冲：一条边先拼成连续字节再一次性 mw_raw。
+ * 为什么要它：1.1M 边 × 每条 6–8 次 mw_*（每次带分支 + memcpy）实测存盘 3.5 s，
+ * 拼一次只掉一个 memcpy。缓冲 64 B 足够：最大情形（两个 id + 4 个时刻）也 < 40 B。 */
+static inline uint8_t *mio16_put_uv(uint8_t *p, uint64_t v) {
+    do {
+        uint8_t byte = (uint8_t)(v & 0x7fu);
+        v >>= 7;
+        if (v) byte |= 0x80u;
+        *p++ = byte;
+    } while (v);
+    return p;
+}
+
 static inline void mio16_w_edge(MWriter *w, const AssocEntry *e) {
+    uint8_t buf[64];
+    uint8_t *p = buf;
     uint16_t f = 0;
     if (e->action) f |= MIO16_E_ACTION;
     if (e->hits) f |= MIO16_E_HITS;
@@ -70,24 +85,25 @@ static inline void mio16_w_edge(MWriter *w, const AssocEntry *e) {
     if (e->birth_tick) f |= MIO16_E_BIRTH;
     if (e->last_touch_tick) f |= MIO16_E_LAST;
     if (e->mem_state != MEM_ACTIVE) f |= MIO16_E_MEM;
-    mw_u16(w, f);
-    mw_uv(w, e->main ? e->main->id : TOKEN_ID_NONE);
-    if (f & MIO16_E_ACTION) mw_uv(w, e->action->id);
-    if (f & MIO16_E_HITS)   mw_uv(w, e->hits);
-    if (f & MIO16_E_SEQ)    mw_uv(w, e->seq);
-    if (f & MIO16_E_ROLE)   mw_u8(w, e->role);
-    if (f & MIO16_E_TOPIC)  mw_u8(w, e->topic);
-    if (f & MIO16_E_PAT)    mw_u8(w, e->pattern);
-    if (f & MIO16_E_REL)    mw_uv(w, e->rel);
-    if (f & MIO16_E_DYN)  { mw_uv(w, e->nrel); mw_u8(w, e->dyn); }
+    *p++ = (uint8_t)f; *p++ = (uint8_t)(f >> 8);
+    p = mio16_put_uv(p, e->main ? e->main->id : TOKEN_ID_NONE);
+    if (f & MIO16_E_ACTION) p = mio16_put_uv(p, e->action->id);
+    if (f & MIO16_E_HITS)   p = mio16_put_uv(p, e->hits);
+    if (f & MIO16_E_SEQ)    p = mio16_put_uv(p, e->seq);
+    if (f & MIO16_E_ROLE)   *p++ = e->role;
+    if (f & MIO16_E_TOPIC)  *p++ = e->topic;
+    if (f & MIO16_E_PAT)    *p++ = e->pattern;
+    if (f & MIO16_E_REL)    p = mio16_put_uv(p, e->rel);
+    if (f & MIO16_E_DYN)  { p = mio16_put_uv(p, e->nrel); *p++ = e->dyn; }
     if (f & MIO16_E_TSET) {
         uint8_t nt = (e->n_tset <= 4) ? e->n_tset : 0;
-        mw_u8(w, nt);
-        for (uint8_t k = 0; k < nt; ++k) mw_uv(w, e->tset[k]);
+        *p++ = nt;
+        for (uint8_t k = 0; k < nt; ++k) p = mio16_put_uv(p, e->tset[k]);
     }
-    if (f & MIO16_E_BIRTH) mw_uv(w, e->birth_tick);
-    if (f & MIO16_E_LAST)  mw_uv(w, e->last_touch_tick);
-    if (f & MIO16_E_MEM)   mw_u8(w, e->mem_state);
+    if (f & MIO16_E_BIRTH) p = mio16_put_uv(p, e->birth_tick);
+    if (f & MIO16_E_LAST)  p = mio16_put_uv(p, e->last_touch_tick);
+    if (f & MIO16_E_MEM)   *p++ = e->mem_state;
+    mw_raw(w, buf, (size_t)(p - buf));
 }
 
 static inline int mio16_r_edge(MReader *r, AssocEntry *e) {
@@ -146,18 +162,23 @@ static inline void mio16_w_token(MWriter *w, const Token *t, int is_temp, uint32
     uint32_t nlen = t->name ? (uint32_t)strlen(t->name) : 0;
     mw_uv(w, nlen);
     if (nlen) mw_raw(w, t->name, nlen);
-    mw_u16(w, f);
-    if (f & MIO16_T_MISSES) mw_uv(w, t->misses);
-    if (f & MIO16_T_RECENT) mw_uv(w, t->recent_misses);
-    if (f & MIO16_T_PARENT) mw_uv(w, t->parent->id);
-    if (f & MIO16_T_NEXT)   mw_uv(w, t->next_in_time->id);
-    if (f & MIO16_T_PERSP)  mw_uv(w, t->perspective_of->id);
-    if (f & MIO16_T_CAT)    mw_u8(w, t->is_category);
-    if (f & MIO16_T_GARB)   mw_u8(w, is_temp ? 1 : t->is_garbage);
-    if (f & MIO16_T_MEM)    mw_u8(w, t->mem_state);
-    if (f & MIO16_T_BIRTH)  mw_uv(w, t->birth_tick);
-    if (f & MIO16_T_LAST)   mw_uv(w, t->last_touch_tick);
-    mw_uv(w, n_edges);
+    /* 剩下的一串（flags + 可选字段 + 边数）先拼进栈缓冲，一次写出：
+     * 65 万词 × 8 次 mw_* 的调用开销实测占存盘约 0.3 s。 */
+    uint8_t buf[64];
+    uint8_t *p = buf;
+    *p++ = (uint8_t)f; *p++ = (uint8_t)(f >> 8);
+    if (f & MIO16_T_MISSES) p = mio16_put_uv(p, t->misses);
+    if (f & MIO16_T_RECENT) p = mio16_put_uv(p, t->recent_misses);
+    if (f & MIO16_T_PARENT) p = mio16_put_uv(p, t->parent->id);
+    if (f & MIO16_T_NEXT)   p = mio16_put_uv(p, t->next_in_time->id);
+    if (f & MIO16_T_PERSP)  p = mio16_put_uv(p, t->perspective_of->id);
+    if (f & MIO16_T_CAT)    *p++ = t->is_category;
+    if (f & MIO16_T_GARB)   *p++ = (uint8_t)(is_temp ? 1 : t->is_garbage);
+    if (f & MIO16_T_MEM)    *p++ = t->mem_state;
+    if (f & MIO16_T_BIRTH)  p = mio16_put_uv(p, t->birth_tick);
+    if (f & MIO16_T_LAST)   p = mio16_put_uv(p, t->last_touch_tick);
+    p = mio16_put_uv(p, n_edges);
+    mw_raw(w, buf, (size_t)(p - buf));
 }
 
 #endif /* MODEL_IO_V16_H */
