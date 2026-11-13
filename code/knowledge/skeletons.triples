@@ -126,6 +126,7 @@ int main(void) {\
     printf("%s\n", ok ? "ok bsearch" : "FAIL bsearch");\
     return ok ? 0 : 1;\
 }
+任务:单词计数	排除	单词顺序
 任务:单词计数	关键词	单词
 任务:单词计数	关键词	行数
 任务:单词计数	关键词	字符数
@@ -165,6 +166,7 @@ int main(int argc, char **argv) {\
     printf("%s\n", ok ? "ok wc" : "FAIL wc");\
     return ok ? 0 : 1;\
 }
+任务:冒泡排序	排除	去重
 任务:冒泡排序	关键词	排序
 任务:冒泡排序	关键词	冒泡
 任务:冒泡排序	关键词	从小到大

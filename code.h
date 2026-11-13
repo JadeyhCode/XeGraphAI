@@ -669,6 +669,16 @@ static inline Token *code_op_category(AI *ai, Token *op) {
 }
 
 #define CODE_MAX_OPS 8
+/* §6.812 中文数字当参数（"七进制"里的七）：只在参数位出现时生效。 */
+static inline int code_cn_num(const char *p) {
+    static const struct { const char *w; int v; } T[] = {
+        {"十", 10}, {"一", 1}, {"二", 2}, {"三", 3}, {"四", 4},
+        {"五", 5}, {"六", 6}, {"七", 7}, {"八", 8}, {"九", 9}, {NULL, 0}
+    };
+    for (int i = 0; T[i].w; ++i)
+        if (!strncmp(p, T[i].w, strlen(T[i].w))) return T[i].v;
+    return -1;
+}
 static inline int code_chain(AI *ai, const char *desc, int min_ops, int need_param, char *note, size_t cap) {
     if (!ai || !ai->pool || !desc || !desc[0]) return -1;
     uint8_t rid_kw = rel_id_of(ai, "关键词", 0);
@@ -891,6 +901,14 @@ static inline int code_chain(AI *ai, const char *desc, int min_ops, int need_par
                             }
                         }
                         break;
+                    }
+                    /* §6.812 中文数字：关键词**正前面**的“七/八/十”也算参数值（"七进制"）。 */
+                    if (got < has_param && got == 0 && best_pos >= 3) {
+                        int cv = code_cn_num(desc + best_pos - 3);
+                        if (cv > 0) {
+                            snprintf(pbufs[n][0], sizeof pbufs[0][0], "%d", cv);
+                            got++;
+                        }
                     }
                     if (got < has_param) continue;     /* 数字不够 ⇒ 这条运算不算 */
                     npv[n] = got;

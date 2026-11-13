@@ -215,6 +215,9 @@ int main(void) {\
 配方:大写字母个数	模板	模板:标准输入字符串
 配方:大写字母个数	主体	    int c = 0; for (char *p = s; *p; p++) if (*p >= 'A' && *p <= 'Z') c++; printf("%d\n", c);\
     const char *q = "AbC"; int t = 0; for (; *q; q++) if (*q >= 'A' && *q <= 'Z') t++; if (t != 2) ok = 0;
+配方:数组和	排除	去重
+配方:数组和	排除	从大到小
+配方:数组和	排除	排列
 配方:数组和	关键词	数组和
 配方:数组和	关键词	数组元素之和
 配方:数组和	关键词	用空格分隔的整数
@@ -1058,6 +1061,7 @@ int main(int argc, char **argv) {\
 # 降序排序（数据）：cmp_desc + 空格分隔输出
 片段:cmp_desc	代码	static int cmp_desc(const void *pa, const void *pb) { long a = *(const long *)pa, b = *(const long *)pb; return (a < b) - (a > b); }
 打印:空格数组	代码	{ for (int i = 0; i < n; i++) printf(i ? " %ld" : "%ld", v[i]); printf("\n"); }
+运算:数组降序	排除	去重
 运算:数组降序	关键词	从大到小
 运算:数组降序	语句	{ qsort(v, (size_t)n, sizeof v[0], cmp_desc); }
 运算:数组降序	用	片段:cmp_desc
@@ -1103,6 +1107,9 @@ int main(int argc, char **argv) {\
 运算:只留数字	输出	打印:字符串
 运算:只留数字	模板	模板:标准输入字符串
 # 去重（数据）：O(n^2) 原地去重，保留首次出现顺序
+运算:数组去重	排除	从小到大
+运算:数组去重	排除	从大到小
+运算:数组去重	排除	排序
 运算:数组去重	关键词	数组去重
 运算:数组去重	关键词	去掉重复
 运算:数组去重	语句	{ int m = 0; for (int i = 0; i < n; i++) { int dup = 0; for (int j = 0; j < m; j++) if (v[j] == v[i]) dup = 1; if (!dup) v[m++] = v[i]; } n = m; }
@@ -1374,3 +1381,73 @@ int main(int argc, char **argv) {\
 运算:八皇后	关键词	八皇后
 运算:八皇后	模板	模板:命令行整数
 运算:八皇后	语句	{ int nn = 8, cnt = 0; static int col[24]; for (int i = 0; i < 24; i++) col[i] = 0; int r = 0; while (r >= 0) { if (r == nn) { cnt++; r--; col[r]++; continue; } if (col[r] >= nn) { col[r] = 0; r--; if (r >= 0) col[r]++; continue; } int ok2 = 1; for (int i = 0; i < r; i++) { int d2 = col[i] - col[r]; if (d2 == 0 || d2 == r - i || d2 == i - r) { ok2 = 0; break; } } if (ok2) { col[r + 1] = 0; r++; } else col[r]++; } x = cnt; }
+
+# blind12 的七道（2026-11-13）：快排/归并/最大子段和/去重/任意进制/逆序对/最长单词
+运算:快速排序	关键词	快速排序
+运算:快速排序	模板	模板:标准输入整数数组
+运算:快速排序	用	片段:cmp_q
+运算:快速排序	语句	qsort(v, (size_t)n, sizeof v[0], cmp_q);
+运算:快速排序	输出	打印:数组空格
+运算:归并排序	关键词	归并排序
+运算:归并排序	模板	模板:标准输入整数数组
+运算:归并排序	语句	{ static long tmp[256]; for (int w = 1; w < n; w *= 2) { for (int lo = 0; lo < n; lo += 2 * w) { int mid = lo + w < n ? lo + w : n, hi = lo + 2 * w < n ? lo + 2 * w : n; int i = lo, j = mid, k = lo; while (i < mid && j < hi) tmp[k++] = v[i] <= v[j] ? v[i++] : v[j++]; while (i < mid) tmp[k++] = v[i++]; while (j < hi) tmp[k++] = v[j++]; } for (int i = 0; i < n; i++) v[i] = tmp[i]; } }
+运算:归并排序	输出	打印:数组空格
+运算:最大子段和	关键词	最大子段和
+运算:最大子段和	关键词	连续子段和
+运算:最大子段和	关键词	子段和
+运算:最大子段和	模板	模板:标准输入整数数组
+运算:最大子段和	语句	{ long best = v[0], cur = v[0]; for (int i = 1; i < n; i++) { cur = cur > 0 ? cur + v[i] : v[i]; if (cur > best) best = cur; } x = best; }
+运算:字符串去重	排除	整数
+运算:字符串去重	排除	数组
+运算:字符串去重	关键词	去掉重复
+运算:字符串去重	模板	模板:标准输入字符串
+运算:字符串去重	语句	{ int seen[256]; for (int i = 0; i < 256; i++) seen[i] = 0; int w = 0; for (int i = 0; s[i]; i++) { unsigned char c = (unsigned char)s[i]; if (seen[c]) continue; seen[c] = 1; s[w++] = (char)c; } s[w] = 0; }
+运算:字符串去重	输出	打印:字符串
+运算:任意进制	排除	转十进制
+运算:任意进制	排除	二进制
+运算:任意进制	排除	字符串
+运算:任意进制	关键词	进制
+运算:任意进制	参数	P
+运算:任意进制	输出	打印:无
+运算:任意进制	模板	模板:命令行整数
+运算:任意进制	语句	{ long b = <P>; if (b < 2 || b > 36) b = 10; char o[128]; int w = 0; long v2 = N < 0 ? -N : N; if (v2 == 0) o[w++] = 48; while (v2 > 0) { int d = (int)(v2 % b); o[w++] = (char)(d < 10 ? 48 + d : 87 + d); v2 /= b; } char r2[128]; int k = 0; if (N < 0) r2[k++] = 45; while (w > 0) r2[k++] = o[--w]; r2[k] = 0; printf("%s\n", r2); }
+运算:最长单词长度	关键词	最长单词
+运算:最长单词长度	模板	模板:标准输入字符串
+运算:最长单词长度	语句	{ int best = 0, cur = 0; for (int i = 0; ; i++) { if (s[i] == 32 || s[i] == 9 || s[i] == 0) { if (cur > best) best = cur; cur = 0; if (!s[i]) break; } else cur++; } x = best; }
+运算:逆序对个数	关键词	逆序对
+运算:逆序对个数	模板	模板:标准输入整数数组
+运算:逆序对个数	语句	{ long c = 0; for (int i = 0; i < n; i++) for (int j = i + 1; j < n; j++) if (v[i] > v[j]) c++; x = c; }
+打印:数组空格	代码	{ for (int i = 0; i < n; i++) printf(i ? " %ld" : "%ld", v[i]); printf("\n"); }
+模板:命令行整数带缓冲	代码	#include <stdio.h>\
+#include <stdlib.h>\
+#include <string.h>\
+int main(int argc, char **argv) {\
+    long N = argc > 1 ? atol(argv[1]) : 30;\
+    char s[128] = "";\
+    int ok = 1;\
+<SLOTS>\
+    printf("%s\n", ok ? "ok" : "FAIL");\
+    return ok ? 0 : 1;\
+}
+模板:命令行整数带缓冲	种类	种类:整数
+片段:cmp_q	代码	static int cmp_q(const void *a, const void *b) { long d = *(const long *)a - *(const long *)b; return d < 0 ? -1 : (d > 0); }
+打印:无	代码	;
+运算:数组去重	关键词	去重
+运算:数组去重	模板	模板:标准输入整数数组
+运算:数组去重	语句	{ int w = 0; for (int i = 0; i < n; i++) { int dup = 0; for (int j = 0; j < w; j++) if (v[j] == v[i]) { dup = 1; break; } if (!dup) v[w++] = v[i]; } n = w; for (int i = 0; i < n; i++) for (int j = i + 1; j < n; j++) if (v[j] < v[i]) { long t2 = v[i]; v[i] = v[j]; v[j] = t2; } }
+运算:数组去重	输出	打印:数组空格
+运算:单词反转	关键词	单词顺序
+运算:单词反转	模板	模板:标准输入字符串
+运算:单词反转	语句	{ for (int i = 0; s[i]; i++) if (s[i] == 10) { s[i] = 0; break; } char words[64][32]; int nw = 0, i = 0; while (s[i] && nw < 64) { while (s[i] == 32) i++; if (!s[i]) break; int w = 0; while (s[i] && s[i] != 32 && w < 31) words[nw][w++] = s[i++]; words[nw][w] = 0; nw++; } char o[512]; int k = 0; for (int q = nw - 1; q >= 0 && k < 500; q--) { if (k) o[k++] = 32; for (int j = 0; words[q][j] && k < 500; j++) o[k++] = words[q][j]; } o[k] = 0; snprintf(s, 128, "%s", o); }
+运算:单词反转	输出	打印:字符串
+
+运算:数组去重升序	关键词	去重
+运算:数组去重升序	排除	从大到小
+运算:数组去重升序	模板	模板:标准输入整数数组
+运算:数组去重升序	语句	{ int w = 0; for (int i = 0; i < n; i++) { int dup = 0; for (int j = 0; j < w; j++) if (v[j] == v[i]) { dup = 1; break; } if (!dup) v[w++] = v[i]; } n = w; for (int i = 0; i < n; i++) for (int j = i + 1; j < n; j++) if (v[j] < v[i]) { long t2 = v[i]; v[i] = v[j]; v[j] = t2; } }
+运算:数组去重升序	输出	打印:数组空格
+运算:数组去重降序	关键词	去重
+运算:数组去重降序	排除	从小到大
+运算:数组去重降序	模板	模板:标准输入整数数组
+运算:数组去重降序	语句	{ int w = 0; for (int i = 0; i < n; i++) { int dup = 0; for (int j = 0; j < w; j++) if (v[j] == v[i]) { dup = 1; break; } if (!dup) v[w++] = v[i]; } n = w; for (int i = 0; i < n; i++) for (int j = i + 1; j < n; j++) if (v[j] > v[i]) { long t2 = v[i]; v[i] = v[j]; v[j] = t2; } }
+运算:数组去重降序	输出	打印:数组空格
