@@ -60,3 +60,4 @@ _t/
 build_xe_sesstest
 _sessions/
 build_xe_plugintest
+build_xe_learntest
