@@ -1475,14 +1475,16 @@ int main(int argc, char **argv) {\
 运算:是否升序	模板	模板:标准输入整数数组
 运算:是否升序	语句	{ int good = 1; for (int i = 1; i < n; i++) if (v[i] < v[i-1]) { good = 0; break; } fputs(good ? "yes" : "no", stdout); putchar(10); }
 运算:是否升序	输出	打印:无
-运算:平方和	关键词	平方的和
-运算:平方和	模板	模板:标准输入整数数组
-运算:平方和	语句	{ long t2 = 0; for (int i = 0; i < n; i++) t2 += v[i] * v[i]; x = t2; }
+运算:数组平方和	关键词	平方的和
+运算:数组平方和	模板	模板:标准输入整数数组
+运算:数组平方和	语句	{ long t2 = 0; for (int i = 0; i < n; i++) t2 += v[i] * v[i]; x = t2; }
 运算:转小写	关键词	小写
 运算:转小写	模板	模板:标准输入字符串
 运算:转小写	语句	{ for (int i = 0; s[i]; i++) if (s[i] >= 65 && s[i] <= 90) s[i] = (char)(s[i] + 32); }
 运算:转小写	输出	打印:字符串
 运算:相邻最大差	关键词	相邻
+运算:相邻最大差	关键词	相邻数
+运算:相邻最大差	关键词	相邻两个数
 运算:相邻最大差	模板	模板:标准输入整数数组
 运算:相邻最大差	语句	{ long best = 0; int have = 0; for (int i = 1; i < n; i++) { long d2 = v[i] - v[i-1]; if (d2 < 0) d2 = -d2; if (!have || d2 > best) { best = d2; have = 1; } } x = best; }
 运算:二的幂	关键词	2 的幂

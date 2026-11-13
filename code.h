@@ -679,6 +679,22 @@ static inline int code_cn_num(const char *p) {
         if (!strncmp(p, T[i].w, strlen(T[i].w))) return T[i].v;
     return -1;
 }
+/* §6.813 **覆盖率门槛（不硬答）**：描述里被选中的知识只覆盖了一小部分 ⇒ 宁可拒绝。
+ * 实测反例（blind14 首跑）："判断是否已经从小到大有序" 撞上 任务:冒泡排序 的关键词"从小到大"，
+ * "输出它们平方的和" 撞上 配方:整数平方 的"平方"，"相邻两个数之差的最大值" 撞上"最大值" ——
+ * 三条都拼出了**语义错误但能跑**的程序。覆盖率 = 命中关键词长度和 / 描述长度（UTF-8 字节）。 */
+static inline double code_cover_ratio(const char *desc, Token *unit, uint8_t d_kw) {
+    if (!desc || !unit || !desc[0]) return 0.0;
+    size_t dl = strlen(desc);
+    if (!dl) return 0.0;
+    size_t hit = 0;
+    for (size_t j = 0; j < unit->count; ++j) {
+        const AssocEntry *e = &token_assocs_ro(unit)[j];
+        if (!e->main || e->dyn != d_kw || !e->main->name) continue;
+        if (strstr(desc, e->main->name)) hit += strlen(e->main->name);
+    }
+    return (double)hit / (double)dl;
+}
 static inline int code_chain(AI *ai, const char *desc, int min_ops, int need_param, char *note, size_t cap) {
     if (!ai || !ai->pool || !desc || !desc[0]) return -1;
     uint8_t rid_kw = rel_id_of(ai, "关键词", 0);
@@ -954,6 +970,8 @@ static inline int code_chain(AI *ai, const char *desc, int min_ops, int need_par
      * 必须属于同一大类；否则拒绝（后面的标量变换不受限）。 */
     if (desc_cat && desc_cat_pos < pos[0]) {
         Token *c0 = code_op_category(ai, ops[0]);
+        if (getenv("AIP_CHAINDBG"))
+            fprintf(stderr, "[chain] 类别过滤：desc=%s op=%s\n", desc_cat->name, c0 ? c0->name : "(无)");
         if (c0 && c0 != desc_cat) return -1;
     }
     Token *tmpl = NULL;
@@ -989,6 +1007,8 @@ static inline int code_chain(AI *ai, const char *desc, int min_ops, int need_par
                 }
             }
         }
+        if (getenv("AIP_CHAINDBG"))
+            fprintf(stderr, "[chain] 模板类别=%s\n", tcat2 ? tcat2->name : "(无)");
         if (tcat2 && strcmp(tcat2->name, "类别:标量") == 0) {
             int keep = 0;
             for (int i = 0; i < n; ++i) {
@@ -1036,18 +1056,20 @@ static inline int code_chain(AI *ai, const char *desc, int min_ops, int need_par
                 if (!kt || !kt->name || strncmp(kt->name, "种类:", 7) != 0 || kt == ktok) continue;
                 for (size_t j = 0; j < kt->count; ++j) {
                     const AssocEntry *e = &token_assocs_ro(kt)[j];
-                    if (e->main && e->dyn == d_shape && e->main->name && strstr(desc, e->main->name)) {
-                        other_kind = 1; break;
-                    }
+                    if (!e->main || e->dyn != d_shape || !e->main->name) continue;
+                    const char *hit = strstr(desc, e->main->name);
+                    if (!hit) continue;
+                    /* §6.814 只有**出现在运算词之前**的形状词才算"输入形状"。 */
+                    if ((size_t)(hit - desc) < pos[0]) { other_kind = 1; break; }
                 }
             }
             if (other_kind) {
                 int mine = 0;
                 for (size_t j = 0; j < ktok->count; ++j) {
                     const AssocEntry *e = &token_assocs_ro(ktok)[j];
-                    if (e->main && e->dyn == d_shape && e->main->name && strstr(desc, e->main->name)) {
-                        mine = 1; break;
-                    }
+                    if (!e->main || e->dyn != d_shape || !e->main->name) continue;
+                    const char *hit = strstr(desc, e->main->name);
+                    if (hit && (size_t)(hit - desc) < pos[0]) { mine = 1; break; }
                 }
                 if (!mine) return -1;
             }
@@ -1057,6 +1079,8 @@ static inline int code_chain(AI *ai, const char *desc, int min_ops, int need_par
      * §6.723 例外：参数化运算（描述里带具体数字）本身够具体，单条就允许。 */
     if (n == 1 && !need_param) {
         uint8_t rid_single = rel_id_of(ai, "单链", 0);
+        if (getenv("AIP_CHAINDBG"))
+            fprintf(stderr, "[chain] 单链检查 mlen=%zu rid_single=%u ktok=%s\n", mlen[0], rid_single, ktok ? ktok->name : "(无)");
         if (rid_single < REL_DYN_BASE || !ktok) return -1;
         uint8_t d_single = (uint8_t)(rid_single - REL_DYN_BASE + 1);
         int ok_single = 0;
