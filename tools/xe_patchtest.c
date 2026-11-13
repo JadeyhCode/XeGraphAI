@@ -1,9 +1,9 @@
 /* tools/xe_patchtest.c — 图补丁自测：只存增量、能重放、大小与图规模无关。
  * gcc -std=c11 -O2 -I. -o build_xe_patchtest tools/xe_patchtest.c -lm
  */
-#include "ai.h"
-#include "xe.h"
-#include "xe_patch.h"
+#include "../ai.h"
+#include "../xe.h"
+#include "../xe_patch.h"
 
 static int fails = 0;
 static void ck(int cond, const char *what) {

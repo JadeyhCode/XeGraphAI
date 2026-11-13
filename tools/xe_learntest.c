@@ -1,11 +1,11 @@
 /* tools/xe_learntest.c — 现场学习自测：从文本/HTML 学“词→空→义”和“空→关系→空”，只写补丁。
  */
-#include "ai.h"
-#include "xe.h"
-#include "xe_patch.h"
-#include "xe_session.h"
+#include "../ai.h"
+#include "../xe.h"
+#include "../xe_patch.h"
+#include "../xe_session.h"
 #include <unistd.h>
-#include "xe_learn.h"
+#include "../xe_learn.h"
 
 static int fails = 0;
 static void ck(int cond, const char *what) {

@@ -1,0 +1,147 @@
+=== 0 编译（严格零警告 + 所有探针）===
+BUILD OK
+SELFCHECK OK（清单与脚本写法自检过）
+  编译通过：66 个探针（-Wall -Wextra -Werror，JOBS=4）
+  [OK]   d4probe 跑得出结论
+  [OK]   wgateprobe 跑得出结论
+  [OK]   driveprobe 跑得出结论
+  [OK]   premholdprobe 跑得出结论
+PROBES OK
+=== 跑 110 套（JOBS=8，每条一个沙箱）===
+[OK]   speed_scale      0.5s  PASS speed_scale（速度基准：小图 494 µs/问 vs 大图 5
+[OK]   revision         0.8s  PASS revision（观测改口语义：后说的替换先说的，
+[OK]   biases           0.7s  PASS biases（反糟粕：因果要协变 / 不知道不说成�
+[OK]   consolidate      1.2s  PASS consolidate（推理沉淀：记住 / 复用 / 观测压过
+[OK]   features         1.3s  PASS features
+[OK]   dates            0.7s  日期/连续折扣：13 过 / 0 红
+[OK]   calc             1.1s  算术：20 过 / 0 红
+[OK]   edges            0.5s  边命中：10 过 / 0 红
+[OK]   selfmod          3.3s  PASS selfmod（微内核：自修改 / 安全内核 / 统一写�
+[OK]   units            2.1s  单位/百分比：40 过 / 0 红
+[OK]   tool             0.4s  PASS tool（8 过 / 0 红）
+[OK]   web              0.3s  PASS web（9 过 / 0 红）
+[OK]   thinking         4.4s  PASS thinking（思维循环：议程 / 分步 / 反方向 / 跨
+[OK]   cmdtable         0.6s  PASS cmdtable（元命令表：113 条命令，表与实现一�
+[OK]   patternsink      4.4s  说法层下沉：36 过 / 0 红
+[OK]   english          2.2s  PASS english（25 过 / 0 红）
+[OK]   distilllearn     3.2s  PASS distilllearn（前缀 5 个：基线 8/20 → 学后 20/20�
+[OK]   generalize       3.8s  PASS generalize
+[OK]   framegate_ab     4.0s  PASS framegate_ab（Gate B 改变了 4/15 句，全部为改善�
+[OK]   belief           3.2s  PASS belief（归属 + 来源监控 + 可信度跨重启 + 他�
+[OK]   logic4           1.6s  PASS logic4（多层 / 独占健全否定 / 假设不被接管 /
+[OK]   xe               6.9s  ALL OK
+[OK]   segmentation     1.1s  PASS segmentation（拆解 / 合并 / 中转 / 碎片护栏，�
+[OK]   hypothesis       1.2s  PASS hypothesis（假设世界：可推 / 不越界 / 能外推 
+[OK]   coining          1.0s  PASS coining（现场造词：造出 / 只造一次 / 重载仍�
+[OK]   teach            0.8s  PASS teach（显式教学：造词 + 否定 + 动态关系 + 存
+[OK]   natcoin          1.2s  PASS natcoin（自然说法里的新词：造词 + 学一条核�
+[OK]   embed            9.2s  PASS embed（L3：emb 真学出来了；同时钉住它撑不起
+[OK]   delibtest        10.2s  思维循环自测：156 项通过，0 项失败
+[OK]   session_facts    1.8s  PASS session_facts（会话图：17 条真事实 + 4 组正反�
+[OK]   askback          7.8s  PASS askback（追问回话：承认推不出来 → 用户回�
+[OK]   cadence          4.3s  PASS cadence（520 轮：叙事/诊断/漂移/想象/内部对�
+[OK]   tokenop          20.9s  PASS tokenop（Token 行为：接线/插词/中转 + 临时 Toke
+[OK]   relations        11.8s  PASS relations（L2：静态知识/传递推理/对话中现学/
+[OK]   natrel           0.7s  PASS natrel（能/可以 → 会：默认开、::relnat off 可�
+[OK]   assocaudit       0.3s  PASS assocaudit（边数组收口：读边只走 token_assocs）
+[OK]   consistency      1.5s  PASS consistency（教→问 14/14；存盘重载 6/6；继承 3
+[OK]   multiagent       2.7s  PASS（多智能体：共存 34 / 各记各的 / 指针标签地
+[OK]   partprobe        2.4s  PASS（局部加载：段文件 8 段 / 按需读回 / 卸下可
+[OK]   fuzz             8.7s  PASS fuzz（随机句 + 病态 + 非法字节 + 混合变异 + �
+[OK]   xbrain           4.0s  通过 48 / 失败 0
+[OK]   interact         11.6s  PASS interact（互动通道端到端：造词/否定/纠正/继
+[OK]   e2e_paper        0.4s  PASS e2e_paper（论文→待证→确认→规则→证明→�
+[OK]   dertest          6.3s  PASS dertest（验证器能识破伪造/非法/断链/假依据�
+[OK]   pdf_real         0.3s  PASS pdf_real
+[OK]   faults           0.9s  PASS faults（截断/位翻转/只读/配额/SIGKILL/并发 六�
+[OK]   pdf              2.4s  PASS pdf（inflate + 取文字 + 待证 + 坏文件不撒谎）
+[OK]   net              0.3s  PASS net（默认关 / 白名单 / 只认 https / 被拒也记�
+[OK]   soak             6.8s  PASS soak（400 轮 / 800 轮两段：RSS 不涨、答复不漂�
+[OK]   perf             6.6s  PASS perf（S 档：载入中位 20 ms / RSS 12480 KB）
+[OK]   model_roundtrip  36.6s  PASS model_roundtrip
+[OK]   e2e_session      0.9s  PASS e2e_session（教→问→改口→存读→切脑 这一�
+[OK]   codetry          2.1s  PASS codetry（真机跑一遍：一次过 / 改一次过 / 认�
+[OK]   scale            4.9s  PASS scale（S：载入 22 ms / RSS 12480 KB）
+[OK]   optest           36.0s  Token 行为 / 临时符号节点 / 修正的记忆 自测：654
+[OK]   scale_inv        4.1s  PASS scale_inv（原图 vs 原图+2000 条无关事实：247 条
+[OK]   cmdfuzz          11.0s  PASS cmdfuzz（命令面随机会话：切脑/存读/局部加�
+[OK]   learnprobe       27.7s  通过 68 / 失败 0
+[OK]   concfiles        1.9s  PASS concfiles（跨进程并发写：文件不坏、读得到�
+[OK]   durable          32.2s  通过 7 / 失败 0
+[OK]   conc             34.0s  通过 3 / 失败 0
+[OK]   poolshare        7.5s  通过 18 / 失败 0
+[OK]   partbench        7.8s  PASS（真实图：1059 段 / 问 50 词读回 50 段）
+[OK]   hypo_scope       0.6s  PASS hypo_scope（作用域回溯：按序号/主语/内容撤�
+[OK]   hypo_frames      0.8s  PASS hypo_frames（假设进帧/检索层：冲突否决、一�
+[OK]   derivation       0.8s  PASS derivation（链结构化 / 验证器在验 / 缺口不断�
+[OK]   biastest         8.1s  反糟粕审计：35 项通过，0 项失败
+[OK]   cot              0.4s  PASS cot（思维链：骨架→校验→降级 咬合，降级�
+[OK]   microtest        5.4s  微内核自测：71 项通过，0 项失败
+[OK]   prerequisite     0.9s  PASS prerequisite（缺前提 → 否定能力：能推、靠数
+[OK]   frames           3.3s  PASS frames（27/28 命中，且抽查的都是语料里没有�
+[OK]   dupcheck         2.1s  PASS dupcheck（清单自检：24 项）
+[OK]   action           0.9s  PASS action（受审的外部执行 + 写文件 + 写代码闭�
+[OK]   asmcheck         0.6s  PASS asmcheck（原语干跑校验 + ASCII 代码词法：39 项
+[OK]   exclusivity      0.5s  PASS exclusivity（独占由数据判定：可印证、可改口
+[OK]   patlong          0.2s  PASS patlong（长行加载 / 超长拦截 / 自检报丢行 / �
+[OK]   patcount         1.3s  PASS patcount（19 个桶全部对上，每个桶都有承重探
+[OK]   fragknow         0.8s  PASS fragknow（抽取 + 编译门 + ::code frag + 代码能编�
+[OK]   codeknow         41.1s  PASS codeknow（骨架全绿 + 灌得进去查得出来 + 规模
+[OK]   wdcorpus         1.1s  PASS wdcorpus（NT→三元组 + 字面量跳过 + 进图可查 
+[OK]   bucketload       3.2s  PASS bucketload（19 个桶都有'关掉就变'的探针）
+[OK]   closure          0.3s  PASS closure（实例继承 + 部分传递 + 非层级不派生 
+[OK]   zhgen            0.1s  PASS zhgen（中文资料 → 规范关系：说法归一 + 待�
+[OK]   corpus7b         2.8s  PASS corpus7b（确定性 + 自洽 + 续跑 + 引擎可挂可查
+[OK]   induce           0.4s  PASS induce（例句归纳说法族 + ::law 逻辑律进数据�
+[OK]   candy            1.0s  PASS candy（排除法：3×3/两条已知/4×4 链式/约束不
+[OK]   circumfix        0.2s  PASS circumfix（以X为食/为主食/为家 + 归纳出为生�
+[OK]   graphmap         0.2s  PASS graphmap（说法映射存图里，不靠外部文件）
+[OK]   graphsink        0.6s  PASS graphsink（框式模式 / 逻辑律 / 帧 都能存在图�
+[OK]   freesym          0.2s  PASS freesym（可命名/互连/临时挂知识/不污染/可回
+[OK]   factorymodel     0.1s  PASS factorymodel（model.bin 是标定产物：节点/边与期
+[OK]   framesink        1.9s  PASS framesink（帧定义完整进图，与 frames.txt 逐条�
+[OK]   rebake           1.6s  PASS rebake（出厂与帧模型的行为基线都钉住了）
+[OK]   longinput        7.7s  长输入：4 过 / 0 红
+[OK]   arc              1.3s  ARC：22 过 / 0 红
+[OK]   parasink         1.4s  说法归一：7 过 / 0 红
+[FAIL] framedefault     0.2s  (exit 1)  帧默认来源：1 过 / 1 红
+[OK]   tablesink        0.7s  小表下沉：7 过 / 0 红
+[OK]   bughunt          76.8s  通过 6 / 失败 0
+[OK]   arcfuzz          5.6s  ARC 随机/边界：29 过 / 0 红
+[OK]   fuzz_long        55.5s  PASS fuzz_long（bughunt 60×5 + cmdfuzz 6×40）
+[OK]   whynot           0.3s  否定问法：6 过 / 0 红
+[OK]   arcops           1.3s  ARC 原语：12 过 / 0 红
+[OK]   dynneg           0.8s  动态否定：6 过 / 0 红
+[OK]   polarity         0.3s  极性一致：10 过 / 0 红
+[OK]   bench            20.2s  基准：4 过 / 0 红
+[OK]   usegraph         30.4s  PASS usegraph（三类图都答对了：真知识 / 代码知识
+[OK]   codebench        79.5s  PASS codebench（A 3/3；B 15/15；C1 全量消融 0/15；C2 片
+[OK]   conc_tsan        66.5s  PASS conc_tsan（0 处数据竞争；并行结果与串行逐字
+[OK]   conc_big         111.6s  PASS conc_big（10000 词 / 50000 边：并行==串行、ASan �
+
+--- framedefault 失败（最后 20 行；全文 _t/par/framedefault.log）---
+== ① 帧模型：默认（图）与 AIP_FRAMES_FROM_GRAPH=0（文件）逐条相同 ==
+  [FAIL] 缺 model_frames.bin（先 sh tools/build_frames_model.sh）
+         证据: /home/jadeth/CLionProjects/XeGraphAI/_t/par/w3/_t/framedefault/model_frames.bin
+== ② 出厂模型没有帧库：仍从 frames.txt 装载 ==
+  [OK]   出厂模型照常答（帧没被改坏）
+
+帧默认来源：1 过 / 1 红
+
+=== 套件结果：110 套，通过 109，失败 1，用时 157s（JOBS=8）===
+=== 收官：交互冒烟（读盘后各派生层是否都在 + 混合模式 + 开关）===
+       帧生成=0 (关联链放行0 现场造词0 拆解0 合并0 中转0 降级0)
+       帧生成=0 (关联链放行0 现场造词0 拆解0 合并0 中转0 降级0)
+你 > AI > 我 很 好 谢谢 你 问
+你 > [内部联想] 你好 在 吧 好 呀 什么 很
+你 > [帧读关联链产物 = 开（默认：白名单外的词按关联链证据放行）]（放行次数 0）
+你 > [现场造词 = 开（默认：把「火锅」这种没见过的词造成符号节点并现场接线）]（已造出 0 个）
+你 > [换切分找帧 = 开（默认：主切分不中时试拆解/合并）]（拆解 0 次 / 合并 0 次）
+你 > [中转词容错 = 开（默认：和/跟/与、还是/或者、会/能 互认）]（生效 0 次）
+你 > [降级答复 = 开（默认：改说「我 不 太 懂 <你 说 的 词>」）]（兜住 0 次）
+你 > [联想直接输出 = 关（默认：只做内部思考）]；[缓存参与自由联想 = 关（默认）]
+你 > AI > 这 个 我 真 不 会 —— 我 只 能 回答 图 里 记 着 的 关系、记 你 教 我 的 东西，不 会 写 诗/画 画/翻 译 这 类 生 成。你 想 聊 知识 的 话 我 在。
+       帧生成=0 (关联链放行0 现场造词0 拆解0 合并0 中转0 降级0)
+
+有回归失败
+EXIT=1

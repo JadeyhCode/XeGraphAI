@@ -1,8 +1,8 @@
 /* tools/xe_metatest.c — 元认知自测：奖励由元认知给、权重随反馈变、接受线自己漂移。
  */
-#include "ai.h"
-#include "xe.h"
-#include "xe_meta.h"
+#include "../ai.h"
+#include "../xe.h"
+#include "../xe_meta.h"
 
 static int fails = 0;
 static void ck(int cond, const char *what) {

@@ -1,8 +1,8 @@
 /* tools/xe_plugintest.c — 插件自测：自己的联想规则 + 自己的行为 + 不劫持。
  */
-#include "ai.h"
-#include "xe.h"
-#include "xe_plugin.h"
+#include "../ai.h"
+#include "../xe.h"
+#include "../xe_plugin.h"
 
 static int fails = 0;
 static void ck(int cond, const char *what) {

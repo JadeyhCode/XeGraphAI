@@ -52,9 +52,9 @@ static inline int xe_patch_push(XePatch *p, const char *from, const char *rel,
         p->e = ne; p->cap = nc;
     }
     XePatchEntry *x = &p->e[p->n++];
-    snprintf(x->from, sizeof x->from, "%s", from);
-    snprintf(x->rel, sizeof x->rel, "%s", rel);
-    snprintf(x->to, sizeof x->to, "%s", to);
+    snprintf(x->from, sizeof x->from, "%.95s", from);
+    snprintf(x->rel, sizeof x->rel, "%.31s", rel);
+    snprintf(x->to, sizeof x->to, "%.95s", to);
     x->add = add;
     return 0;
 }
@@ -83,6 +83,7 @@ static inline void xe_graph_fp(AI *ai, char *out, size_t cap) {
 
 /* 删除一条边：核心关系清位，动态关系清 dyn（不动其它位，零格式改动）*/
 static inline int xe_unlink(AI *ai, Token *a, Token *b, uint8_t rid) {
+    (void)ai;   /* 删边只动 a 的边表，不需要 AI */
     if (!a || !b || !rid) return -1;
     for (size_t i = 0; i < a->count; ++i) {
         AssocEntry *e = &token_assocs(a)[i];
@@ -128,8 +129,8 @@ static inline int xe_patch_load(XePatch *p, const char *path) {
         while (l && (line[l - 1] == '\n' || line[l - 1] == '\r')) line[--l] = 0;
         if (!line[0]) continue;
         if (line[0] == '#') {
-            if (strncmp(line, "# session ", 10) == 0) snprintf(p->session, sizeof p->session, "%s", line + 10);
-            else if (strncmp(line, "# base ", 7) == 0) snprintf(p->base_fp, sizeof p->base_fp, "%s", line + 7);
+            if (strncmp(line, "# session ", 10) == 0) snprintf(p->session, sizeof p->session, "%.63s", line + 10);
+            else if (strncmp(line, "# base ", 7) == 0) snprintf(p->base_fp, sizeof p->base_fp, "%.32s", line + 7);
             continue;
         }
         if (line[0] != '+' && line[0] != '-') continue;

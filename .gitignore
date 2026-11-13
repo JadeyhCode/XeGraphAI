@@ -62,3 +62,9 @@ _sessions/
 build_xe_plugintest
 build_xe_learntest
 build_xe_metatest
+# 例外：tools/ 下几个以 build_ 开头的脚本**是工具不是产物**（2026-11-13 修：
+# 以前被 build_* 规则误忽略，干净克隆里 tests/framedefault 直接红）
+!tools/build_flash.sh
+!tools/build_frames_model.sh
+!tools/build_name_index.sh
+model_frames.bin

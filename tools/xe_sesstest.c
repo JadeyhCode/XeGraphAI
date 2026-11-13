@@ -1,9 +1,9 @@
 /* tools/xe_sesstest.c — 会话记忆自测：按会话隔离、补丁落盘、跨进程可恢复。
  */
-#include "ai.h"
-#include "xe.h"
-#include "xe_patch.h"
-#include "xe_session.h"
+#include "../ai.h"
+#include "../xe.h"
+#include "../xe_patch.h"
+#include "../xe_session.h"
 
 static int fails = 0;
 static void ck(int cond, const char *what) {
