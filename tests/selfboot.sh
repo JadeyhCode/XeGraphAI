@@ -24,17 +24,19 @@ mkdir -p "$ROOT/_t/selfboot"
 python3 tools/selfboot.py > "$OUT" 2>&1
 RC=$?
 
-B=$(sed -n "s/.*自举前 \([0-9]*\)\/12.*/\1/p" "$OUT" | tail -1)
-A=$(sed -n "s/.*自举后 \([0-9]*\)\/12.*/\1/p" "$OUT" | tail -1)
+B=$(sed -n "s/.*自举前 \([0-9]*\)\/\([0-9]*\).*/\1/p" "$OUT" | tail -1)
+A=$(sed -n "s/.*自举后 \([0-9]*\)\/\([0-9]*\).*/\1/p" "$OUT" | tail -1)
 B=${B:-0}; A=${A:-0}
-printf "  自举前 %s/12 ⇒ 自举后 %s/12（rc=%s）\n" "$B" "$A" "$RC"
+T=$(sed -n "s/.*自举后 [0-9]*\/\([0-9]*\).*/\1/p" "$OUT" | tail -1)
+T=${T:-12}
+printf "  自举前 %s/%s ⇒ 自举后 %s/%s（rc=%s）\n" "$B" "$T" "$A" "$T" "$RC"
 
 fails=0
 [ "$RC" -eq 0 ] || { printf "  [FAIL] selfboot.py 非零退出（rc=%s）\n" "$RC"; fails=1; }
-[ "$B" -lt 12 ] || { printf "  [FAIL] 自举前就已经 12/12 —— 这轮没测到任何缺口\n"; fails=1; }
-[ "$A" -ge 10 ] || { printf "  [FAIL] 自举后只有 %s/12（要求 ≥10）\n" "$A"; fails=1; }
+[ "$B" -lt "$T" ] || { printf "  [FAIL] 自举前就已经 12/12 —— 这轮没测到任何缺口\n"; fails=1; }
+[ "$A" -ge $((T * 85 / 100)) ] || { printf "  [FAIL] 自举后只有 %s/%s（要求 ≥85%%）\n" "$A" "$T"; fails=1; }
 AFTER_HASH=$(sha256sum code/code_model.bin | cut -d" " -f1)
 [ "$BEFORE_HASH" = "$AFTER_HASH" ] || { printf "  [FAIL] 仓库模型被改了（selfboot 只该改副本）\n"; fails=1; }
 
-[ "$fails" -eq 0 ] && printf "PASS selfboot（自举 %s→%s/12，仓库模型未改）\n" "$B" "$A" || printf "FAIL selfboot\n"
+[ "$fails" -eq 0 ] && printf "PASS selfboot（自举 %s→%s/%s，仓库模型未改）\n" "$B" "$A" "$T" || printf "FAIL selfboot\n"
 [ "$fails" -eq 0 ]
