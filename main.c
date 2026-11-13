@@ -3155,6 +3155,21 @@ int main(int argc, char **argv) {
                         printf("[语料] 扫了 %d 片：%d 片有「%s」的事实（合计 %d 条）\n", nshard, nhit, name, nf);
                         continue;
                     }
+                    if (!strcmp(act, "attachmerge")) {
+                        /* §6.809 `::parts corpus attachmerge <文件.c7b>` —— 整片**并进同一张图**
+                         * （边急切读进 RAM、按同名词合并、去重）。大分片有上限，见 AIP_C7B_MERGE_MAX。 */
+                        char cerr3[192] = {0};
+                        if (!arg[0]) { printf("[用法] ::parts corpus attachmerge <文件.c7b>\n"); continue; }
+                        C7B *nc3 = c7b_open(arg, cerr3, sizeof cerr3);
+                        if (!nc3) { printf("[语料] 打不开：%s\n", cerr3[0] ? cerr3 : arg); continue; }
+                        int nm3 = c7b_attach_merge(a->brain, nc3, cerr3, sizeof cerr3);
+                        if (nm3 < 0) { printf("[语料] 合并失败：%s\n", cerr3[0] ? cerr3 : "?"); c7b_close(nc3); continue; }
+                        printf("[语料] 已并进图：%s（边 %llu / 合并到 %d 个词上；现在 ::rel 看得见这片）\n",
+                               nc3->path, (unsigned long long)nc3->n_edges, nm3);
+                        /* ⚠ 合并完就关文件：边已经在 RAM 里了，不需要留 fd */
+                        c7b_close(nc3);
+                        continue;
+                    }
                     if (!strcmp(act, "union")) {
                         /* §6.808 **跨分片查询（路线 B 的第一小步）**：
                          * 同一个词在多个 .c7b 分片里可能都有事实 —— 逐片查、按 (关系,对象) 去重后合并。

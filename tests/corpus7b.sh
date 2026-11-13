@@ -145,6 +145,24 @@ else
     bad "union 比单片还少（union ${_uniq:-?} / 单片 ${_one:-?}）" ""
 fi
 
+
+echo "== ⑦ 跨片合并（路线 B 第二步：attachmerge 真的并成一张图） =="
+printf '::stats\n::parts corpus attachmerge %s/u/shard_001.c7b\n::stats\n::parts corpus attachmerge %s/u/shard_002.c7b\n::stats\n::quit\n' "$WORK" "$WORK" | ./build_aip --model m.bin > mg.out 2>&1
+# `::stats` 每次会打两行（一次命令 + 一次内部回显）：去重后再取第一/最后
+_seq=$(grep -a '统计' mg.out | sed -n 's/.*边=\([0-9][0-9]*\).*/\1/p' | awk 'prev!=$0{print; prev=$0}')
+_e0=$(printf '%s\n' "$_seq" | sed -n 1p)
+_e1=$(printf '%s\n' "$_seq" | sed -n 2p)
+_e2=$(printf '%s\n' "$_seq" | sed -n 3p)
+if [ "${_e1:-0}" -gt "${_e0:-0}" ] && [ "${_e2:-0}" -gt "${_e1:-0}" ]; then
+    ok "两次 attachmerge 边数都涨：${_e0:-?} → ${_e1:-?} → ${_e2:-?}（一张图里有两片）"
+else
+    bad "attachmerge 没并进同一张图（${_e0:-?} / ${_e1:-?} / ${_e2:-?}）" "$(grep -a '语料' mg.out | head -3 | tr '\n' ' ')"
+fi
+# 大分片必须被上限挡住（别让 2000 万边一片在 15 GB 机器上把内存吃光）
+printf '::parts corpus attachmerge %s/u/shard_001.c7b\n::quit\n' "$WORK" | AIP_C7B_MERGE_MAX=100 ./build_aip --model m.bin 2>&1 | grep -qa '上限' \
+    && ok "超过 AIP_C7B_MERGE_MAX 的分片被拒（提示用 union）" \
+    || bad "上限没生效（大分片照样合并）" ""
+
 printf '语料分片：通过 %d / 失败 %d\n' "$pass" "$fail"
 [ "$fail" -eq 0 ] && printf 'PASS corpus7b（确定性 + 自洽 + 续跑 + 引擎可挂可查 + 坏文件拒）\n' || printf 'FAIL corpus7b\n'
 [ "$fail" -eq 0 ]

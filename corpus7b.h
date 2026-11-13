@@ -406,6 +406,78 @@ static inline int c7b_attach(AI *ai, C7B *c, char *err, size_t cap) {
     return (int)ntag;
 }
 
+
+/* §6.809 **跨片合并（路线 B 第二步的最小实现）**：把一片的边**急切读进 RAM**、并到同名词上。
+ * 与 attach 的区别：attach 只打 DISK 标签（按需读，一次一片）；merge 真的合并成一张图，
+ * `::rel` / 求解器 / `::contradict` 都看得见两片的边。
+ * 代价：**内存** = 边数 × 每条边大小。所以有上限（AIP_C7B_MERGE_MAX，默认 4M 边/片），超了拒绝并提示用 union。 */
+static inline int c7b_attach_merge(AI *ai, C7B *c, char *err, size_t cap) {
+    if (err && cap) err[0] = 0;
+    if (!ai || !ai->pool || !c) { if (err && cap) snprintf(err, cap, "没有脑子/没有分片"); return -1; }
+    if (c->ver != 1) { if (err && cap) snprintf(err, cap, "v2 真 KG 的合并要属性号映射，暂不支持"); return -1; }
+    long maxe = 4000000;
+    { const char *e = getenv("AIP_C7B_MERGE_MAX"); if (e && e[0]) maxe = strtol(e, NULL, 10); }
+    if ((long)c->n_edges > maxe) {
+        if (err && cap) snprintf(err, cap, "这片 %llu 边 > 上限 %ld（用 ::parts corpus union 查，别整片合并）",
+                                 (unsigned long long)c->n_edges, maxe);
+        return -1;
+    }
+    if (c7b_load_index(c) != 0) { if (err && cap) snprintf(err, cap, "索引读不进内存"); return -1; }
+    c->map = (void **)calloc(c->n_words ? c->n_words : 1, sizeof(void *));
+    if (!c->map) { if (err && cap) snprintf(err, cap, "内存不够（词表映射）"); return -1; }
+    char nm[32];
+    for (uint32_t i = 0; i < c->n_words; ++i) {
+        snprintf(nm, sizeof nm, "w%06u", i);
+        Token *t = pool_token_intern(ai->pool, nm);
+        if (!t) { if (err && cap) snprintf(err, cap, "造词失败 @%u", i); return -1; }
+        c->map[i] = t;
+    }
+    int ntok = 0;
+    for (uint32_t k = 0; k < c->n_seg; ++k) {
+        uint32_t id = c->iid[k], cnt = c->icnt[k];
+        if (!cnt || id >= c->n_words) continue;
+        Token *t = (Token *)c->map[id];
+        if (!t) continue;
+        uint64_t off = c->ioff[k];
+        AssocEntry *add = (AssocEntry *)calloc(cnt, sizeof *add);
+        if (!add) { if (err && cap) snprintf(err, cap, "内存不够（边 %u 条）", cnt); return -1; }
+        if (fseek(c->f, (long)off, SEEK_SET) != 0) { free(add); continue; }
+        uint32_t got = 0;
+        for (uint32_t j = 0; j < cnt; ++j) {
+            C7BEdge eb;
+            if (fread(&eb, C7B_REC, 1, c->f) != 1) break;
+            Token *b = (eb.b_id && eb.b_id < c->n_words) ? (Token *)c->map[eb.b_id] : NULL;
+            if (!b || b == t) continue;
+            int dup = 0;
+            for (size_t q = 0; q < t->count && !dup; ++q) {
+                const AssocEntry *x = &token_assocs_ro(t)[q];
+                if (x->main == b && x->rel == (uint16_t)eb.rel && x->dyn == eb.dyn) dup = 1;
+            }
+            if (dup) continue;
+            add[got].main = b;
+            add[got].rel = (uint16_t)eb.rel;
+            add[got].dyn = eb.dyn;
+            add[got].hits = 1;
+            got++;
+        }
+        if (got) {
+            /* 走**唯一写入口**：先取旧边（RAM），拼成新数组，再 token_assocs_set_ram 交给存储层
+             * （它负责 free 旧数组；不直接摸 t->assocs，assocaudit 才过得去）。 */
+            const AssocEntry *old = token_assocs_ro(t);
+            size_t oldn = t->count;
+            AssocEntry *na = (AssocEntry *)calloc(oldn + got, sizeof *na);
+            if (!na) { free(add); if (err && cap) snprintf(err, cap, "内存不够（合并边）"); return -1; }
+            if (oldn && old) memcpy(na, old, oldn * sizeof *na);
+            memcpy(na + oldn, add, got * sizeof *na);
+            token_assocs_set_ram(t, na, oldn + got);
+            ntok++;
+        }
+        free(add);
+    }
+    c->pool = ai->pool;
+    return ntok;
+}
+
 /* 摘掉：把每个"边在语料里"的词清成空表（文件不动）。
  * 关分片/换片之前必须调 —— 否则池里留着 DISK 标签，读边时会去解引用一个已经 free 的上下文。*/
 static inline void c7b_detach(AI *ai, C7B *c) {
