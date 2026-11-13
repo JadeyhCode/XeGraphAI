@@ -69,6 +69,7 @@ int main(int argc, char **argv) {\
     printf("%s\n", ok ? "ok fib" : "FAIL fib");\
     return ok ? 0 : 1;\
 }
+任务:最值平均	排除	相邻
 任务:最值平均	关键词	最大值
 任务:最值平均	关键词	最小值
 任务:最值平均	关键词	平均值
@@ -166,6 +167,8 @@ int main(int argc, char **argv) {\
     printf("%s\n", ok ? "ok wc" : "FAIL wc");\
     return ok ? 0 : 1;\
 }
+任务:冒泡排序	排除	是否
+任务:冒泡排序	排除	判断
 任务:冒泡排序	排除	去重
 任务:冒泡排序	关键词	排序
 任务:冒泡排序	关键词	冒泡
@@ -253,6 +256,8 @@ int main(void) {\
     printf("%s\n", ok ? "ok pal" : "FAIL pal");\
     return ok ? 0 : 1;\
 }
+任务:进制转换	排除	二进制里
+任务:进制转换	排除	1 的个数
 任务:进制转换	关键词	进制
 任务:进制转换	关键词	二进制
 任务:进制转换	关键词	十六进制

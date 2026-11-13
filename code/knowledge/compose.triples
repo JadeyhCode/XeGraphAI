@@ -236,6 +236,7 @@ int main(void) {\
 配方:奇数判断	模板	模板:命令行整数
 配方:奇数判断	主体	    printf("%d\n", N % 2 != 0);\
     if ((3 % 2 == 0) || (4 % 2 != 0)) ok = 0;
+配方:整数平方	排除	平方的和
 配方:整数平方	关键词	平方
 配方:整数平方	排除	平方根
 配方:整数平方	模板	模板:命令行整数
@@ -1403,6 +1404,8 @@ int main(int argc, char **argv) {\
 运算:字符串去重	模板	模板:标准输入字符串
 运算:字符串去重	语句	{ int seen[256]; for (int i = 0; i < 256; i++) seen[i] = 0; int w = 0; for (int i = 0; s[i]; i++) { unsigned char c = (unsigned char)s[i]; if (seen[c]) continue; seen[c] = 1; s[w++] = (char)c; } s[w] = 0; }
 运算:字符串去重	输出	打印:字符串
+运算:任意进制	排除	1 的个数
+运算:任意进制	排除	二进制里
 运算:任意进制	排除	转十进制
 运算:任意进制	排除	二进制
 运算:任意进制	排除	字符串
@@ -1451,3 +1454,42 @@ int main(int argc, char **argv) {\
 运算:数组去重降序	模板	模板:标准输入整数数组
 运算:数组去重降序	语句	{ int w = 0; for (int i = 0; i < n; i++) { int dup = 0; for (int j = 0; j < w; j++) if (v[j] == v[i]) { dup = 1; break; } if (!dup) v[w++] = v[i]; } n = w; for (int i = 0; i < n; i++) for (int j = i + 1; j < n; j++) if (v[j] > v[i]) { long t2 = v[i]; v[i] = v[j]; v[j] = t2; } }
 运算:数组去重降序	输出	打印:数组空格
+
+运算:括号匹配	关键词	括号
+运算:括号匹配	模板	模板:标准输入字符串
+运算:括号匹配	语句	{ char st[128]; int top = 0, good = 1; for (int i = 0; s[i]; i++) { char c = s[i]; if (c == 40 || c == 91 || c == 123) { if (top < 127) st[top++] = c; else { good = 0; break; } } else if (c == 41 || c == 93 || c == 125) { if (top == 0) { good = 0; break; } char o2 = st[--top]; if ((c == 41 && o2 != 40) || (c == 93 && o2 != 91) || (c == 125 && o2 != 123)) { good = 0; break; } } } if (top != 0) good = 0; fputs(good ? "yes" : "no", stdout); putchar(10); }
+运算:括号匹配	输出	打印:无
+运算:罗马数字	关键词	罗马
+运算:罗马数字	关键词	罗马数字
+运算:罗马数字	模板	模板:命令行整数
+运算:罗马数字	输出	打印:无
+运算:罗马数字	语句	{ static const int val[] = {1000,900,500,400,100,90,50,40,10,9,5,4,1}; static const char *sym[] = {"M","CM","D","CD","C","XC","L","XL","X","IX","V","IV","I"}; long v2 = N; char o[64]; int k = 0; for (int i = 0; i < 13 && k < 60; i++) while (v2 >= val[i]) { for (const char *p = sym[i]; *p && k < 60; p++) o[k++] = *p; v2 -= val[i]; } o[k] = 0; fputs(o, stdout); putchar(10); }
+
+运算:二进制一计数	关键词	二进制里
+运算:二进制一计数	模板	模板:命令行整数
+运算:二进制一计数	语句	{ long v2 = N; x = 0; while (v2 > 0) { if (v2 & 1) x++; v2 >>= 1; } }
+运算:各位数字和	关键词	各位数字之和
+运算:各位数字和	模板	模板:命令行整数
+运算:各位数字和	语句	{ long v2 = N < 0 ? -N : N; x = 0; while (v2 > 0) { x += v2 % 10; v2 /= 10; } }
+运算:是否升序	关键词	有序
+运算:是否升序	模板	模板:标准输入整数数组
+运算:是否升序	语句	{ int good = 1; for (int i = 1; i < n; i++) if (v[i] < v[i-1]) { good = 0; break; } fputs(good ? "yes" : "no", stdout); putchar(10); }
+运算:是否升序	输出	打印:无
+运算:平方和	关键词	平方的和
+运算:平方和	模板	模板:标准输入整数数组
+运算:平方和	语句	{ long t2 = 0; for (int i = 0; i < n; i++) t2 += v[i] * v[i]; x = t2; }
+运算:转小写	关键词	小写
+运算:转小写	模板	模板:标准输入字符串
+运算:转小写	语句	{ for (int i = 0; s[i]; i++) if (s[i] >= 65 && s[i] <= 90) s[i] = (char)(s[i] + 32); }
+运算:转小写	输出	打印:字符串
+运算:相邻最大差	关键词	相邻
+运算:相邻最大差	模板	模板:标准输入整数数组
+运算:相邻最大差	语句	{ long best = 0; int have = 0; for (int i = 1; i < n; i++) { long d2 = v[i] - v[i-1]; if (d2 < 0) d2 = -d2; if (!have || d2 > best) { best = d2; have = 1; } } x = best; }
+运算:二的幂	关键词	2 的幂
+运算:二的幂	模板	模板:命令行整数
+运算:二的幂	输出	打印:无
+运算:二的幂	语句	{ long v2 = N; int good = v2 > 0; while (v2 > 1) { if (v2 & 1) { good = 0; break; } v2 >>= 1; } fputs(good ? "yes" : "no", stdout); putchar(10); }
+运算:首尾相同	关键词	首尾
+运算:首尾相同	模板	模板:标准输入字符串
+运算:首尾相同	输出	打印:无
+运算:首尾相同	语句	{ int len = (int)strlen(s); while (len > 0 && (s[len-1] == 10 || s[len-1] == 13)) len--; int good = len > 0 && s[0] == s[len-1]; fputs(good ? "yes" : "no", stdout); putchar(10); }
