@@ -20,7 +20,7 @@ BLIND19 = [
     dict(name="包含偶数", desc="写一个程序：读入一行整数（标准输入），判断里面有没有偶数（输出 yes 或 no）。",
          kind="stdin", data=["1 3 4\n"], want="yes"),
     dict(name="有几个7", desc="写一个程序：读入一个整数（命令行参数），输出它里面有几个数字 7。",
-         kind="argv", data=["7707"], want="2"),
+         kind="argv", data=["7707"], want="3"),
 ]
 
 def main():
