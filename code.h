@@ -695,6 +695,90 @@ static inline double code_cover_ratio(const char *desc, Token *unit, uint8_t d_k
     }
     return (double)hit / (double)dl;
 }
+/* §6.815 **语义闸门**：描述里提到的“内容词”，命中的知识里到底有没有？
+ * 反例（blind15 实测）：
+ *   「输出最小值的**下标**」→ 命中 任务:最值平均（它只会打 max/min/avg）；
+ *   「输出**负数**的个数」→ 命中一个只数了 1 个的算子；
+ *   「最大值与最小值**之差**」→ 又命中 最值平均。
+ * 三条都拼出了“能跑但语义错”的程序 —— 这比拒绝更糟。
+ * 判据：把描述里的 2 字词（去掉停用词）逐个拿到**命中单元的知识文本**里找
+ * （关键词 + 用途 + 目标代码）；覆盖率低于阈值就拒绝。知识文本是数据，不是硬编码。 */
+static int code_is_stop2(const char *g) {
+    static const char *S[] = {"一个","程序","读入","输出","标准","输入","命令","行参","参数","整数","字符","数组",
+                               "数字","每个","所有","然后","并且","给定","要求","计算","打印","结果","这些",
+                               "其中","它们","时候","里面","之后","之前","是否","判断","多少","个数","一共",
+                               "请写","用给","给一","如下","以下","并且","或者","以及","例如","比如", NULL};
+    for (int i = 0; S[i]; ++i) if (!strncmp(g, S[i], 6)) return 1;
+    return 0;
+}
+
+/* 词是否在整张图里出现过（任意 token 名包含它）—— 用来区分“图里认识但命中单元没实现”的词，
+ * 和“图里根本不认识的生词”（后者不判，免得把新描述一律拒掉）。 */
+static inline int code_word_known(AI *ai, const char *g) {
+    for (size_t i = 0; i < ai->pool->count; ++i) {
+        Token *t = ai->pool->tokens[i];
+        if (!t || !t->name) continue;
+        if (strstr(t->name, g)) return 1;
+    }
+    return 0;
+}
+/* §6.816 **需求词闸门（窄口径）**：只盯少数“输出形态词”——正常描述里很少见，
+ * 一旦出现而命中单元的知识里没有，就说明我们没实现这个需求 ⇒ 拒绝。
+ * 比“内容词覆盖率”稳：覆盖率会把隐藏组大批误拒（实测见文档 9.21）。 */
+static inline int code_gate_artifacts(AI *ai, Token *unit, const char *desc, char *missing, size_t cap) {
+    static const char *W[] = {"下标", "索引", "之差", "包含", "有没有", "是不是", "交替", "互为", "个数", NULL};
+    if (!ai || !unit || !desc) return 0;
+    char kn[8192];
+    size_t kl = 0;
+    kl += (size_t)snprintf(kn + kl, sizeof kn - kl, "%s ", unit->name ? unit->name : "");
+    for (size_t j = 0; j < unit->count && kl + 512 < sizeof kn; ++j) {
+        const AssocEntry *e = &token_assocs_ro(unit)[j];
+        if (!e->main || !e->main->name) continue;
+        kl += (size_t)snprintf(kn + kl, sizeof kn - kl, "%s ", e->main->name);
+    }
+    int bad = 0;
+    if (missing && cap) missing[0] = 0;
+    for (int i = 0; W[i]; ++i) {
+        if (!strstr(desc, W[i])) continue;
+        if (strstr(kn, W[i])) continue;
+        bad++;
+        if (missing && cap) {
+            size_t ml = strlen(missing);
+            if (ml + strlen(W[i]) + 2 < cap) snprintf(missing + ml, cap - ml, "%s ", W[i]);
+        }
+    }
+    return bad;
+}
+static inline double code_desc_cover(AI *ai, Token *unit, const char *desc, char *missing, size_t cap) {
+    if (!ai || !unit || !desc) return 1.0;
+    /* 知识文本：单元名 + 关键词 + 用途 + 目标代码（骨架/模板/主体/语句都算） */
+    char kn[8192];
+    size_t kl = 0;
+    kl += (size_t)snprintf(kn + kl, sizeof kn - kl, "%s ", unit->name ? unit->name : "");
+    for (size_t j = 0; j < unit->count && kl + 512 < sizeof kn; ++j) {
+        const AssocEntry *e = &token_assocs_ro(unit)[j];
+        if (!e->main || !e->main->name) continue;
+        if (e->dyn == 0 || e->main->name[0] == 0) continue;
+        kl += (size_t)snprintf(kn + kl, sizeof kn - kl, "%s ", e->main->name);
+    }
+    size_t total = 0, hit = 0;
+    if (missing && cap) missing[0] = 0;
+    for (size_t i = 0; desc[i] && desc[i + 5] && total < 64; i += 3) {
+        if (((unsigned char)desc[i] < 0x80) || ((unsigned char)desc[i + 3] < 0x80)) continue;
+        char g[7];
+        memcpy(g, desc + i, 6); g[6] = 0;
+        if (code_is_stop2(g)) continue;
+        if (!code_word_known(ai, g)) continue;      /* 图里没这个词 ⇒ 不判 */
+        total++;
+        if (strstr(kn, g)) { hit++; continue; }
+        if (missing && cap) {
+            size_t ml = strlen(missing);
+            if (ml + 7 < cap) snprintf(missing + ml, cap - ml, "%s ", g);
+        }
+    }
+    if (total < 3) return 1.0;          /* 认识的词太少，不判 */
+    return (double)hit / (double)total;
+}
 static inline int code_chain(AI *ai, const char *desc, int min_ops, int need_param, char *note, size_t cap) {
     if (!ai || !ai->pool || !desc || !desc[0]) return -1;
     uint8_t rid_kw = rel_id_of(ai, "关键词", 0);
@@ -950,6 +1034,17 @@ static inline int code_chain(AI *ai, const char *desc, int min_ops, int need_par
             npv[keep] = npv[i]; keep++;
         }
         n = keep;
+    }
+    /* §6.815 链也要过闸门：只用关键词判覆盖率，缺的内容词（负数/下标/之差）就不该硬答 */
+    if (n >= min_ops && n > 0) {
+        char miss[512] = {0};
+        double cov = code_desc_cover(ai, ops[0], desc, miss, sizeof miss);
+        double minc = 0.0;
+        const char *th = getenv("AIP_COVER_CHAIN_MIN");
+        if (th && th[0]) minc = atof(th);
+        if (getenv("AIP_CHAINDBG"))
+            fprintf(stderr, "[gate:chain] %s 覆盖=%.2f 缺=[%s]\n", ops[0]->name, cov, miss);
+        if (cov < minc) return -1;
     }
     if (getenv("AIP_CHAINDBG")) fprintf(stderr, "[chain] 覆盖后 n=%d (min=%d)\n", n, min_ops);
     if (n < min_ops) return -1;
@@ -1339,11 +1434,52 @@ static inline int code_synth(AI *ai, const char *desc, char *note, size_t cap) {
             }
         }
         if (recipe) {
+            char aw2[256] = {0};
+            if (code_gate_artifacts(ai, recipe, nd, aw2, sizeof aw2) > 0) {
+                if (note && cap) snprintf(note, cap, "描述要 %s，配方 %s 里没有 ⇒ 不硬答", aw2, recipe->name);
+                return -1;
+            }
+            char miss2[512] = {0};
+            double cov2 = code_desc_cover(ai, recipe, nd, miss2, sizeof miss2);
+            double minc2 = 0.0;
+            const char *th2 = getenv("AIP_COVER_MIN");
+            if (th2 && th2[0]) minc2 = atof(th2);
+            if (getenv("AIP_CHAINDBG"))
+                fprintf(stderr, "[gate:配方] %s 覆盖=%.2f 缺=[%s]\n", recipe->name, cov2, miss2);
+            if (cov2 < minc2) {
+                if (note && cap)
+                    snprintf(note, cap, "配方 %s 只覆盖描述的一部分（缺 %s）⇒ 不硬答",
+                             recipe->name, miss2[0] ? miss2 : "内容词");
+                return -1;
+            }
             int rrc = code_compose(ai, recipe, desc, note, cap, "配方");
             if (rrc != -3) return rrc;
         }
         if (note && cap) snprintf(note, cap, "没有匹配的任务/配方（描述里的关键词在图里一个都没命中）");
         return -1;
+    }
+    /* §6.816 窄口径需求词闸门（默认开）：命中单元的知识里没有“下标/之差/包含/交替”这类输出形态 ⇒ 拒绝 */
+    {
+        char aw[256] = {0};
+        if (code_gate_artifacts(ai, best, nd, aw, sizeof aw) > 0) {
+            if (note && cap) snprintf(note, cap, "描述要 %s，命中的知识里没有 ⇒ 不硬答", aw);
+            return -1;
+        }
+    }
+    /* §6.815 语义闸门：描述里的内容词在命中单元的知识里覆盖率太低 ⇒ 宁可拒绝 */
+    {
+        char miss[512] = {0};
+        double cov = code_desc_cover(ai, best, nd, miss, sizeof miss);
+        const char *th = getenv("AIP_COVER_MIN");
+        double minc = th && th[0] ? atof(th) : 0.0;   /* §6.815 默认关：实测会误拒隐藏组，见文档 */
+        if (getenv("AIP_CHAINDBG"))
+            fprintf(stderr, "[gate] 单元=%s 覆盖=%.2f 缺=[%s]\n", best->name, cov, miss);
+        if (cov < minc) {
+            if (note && cap)
+                snprintf(note, cap, "描述里有知识没覆盖的内容（%s 覆盖 %.0f%%）⇒ 不硬答",
+                         miss[0] ? miss : "内容词", cov * 100.0);
+            return -1;
+        }
     }
     /* ①b 组合/配方：挂 模板/用/主体 的，交给同一个组合器（任务和配方走同一份） */
     {
