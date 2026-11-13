@@ -1326,3 +1326,51 @@ int main(void) {\
 运算:约瑟夫环	参数	Q
 运算:约瑟夫环	模板	模板:命令行整数
 运算:约瑟夫环	语句	{ long n = <Q>, k = <P>; long w = 0; for (long i = 2; i <= n; i++) w = (w + k) % i; x = w + 1; }
+
+# 四例：汉诺塔步数 / 数字转英文 / 大数乘法 / 日期差（2026-11-13）
+运算:汉诺塔步数	关键词	汉诺塔
+运算:汉诺塔步数	参数	P
+运算:汉诺塔步数	模板	模板:命令行整数
+运算:汉诺塔步数	语句	{ long n = <P>; x = (n >= 0 && n < 62) ? ((1L << n) - 1) : 0; }
+运算:数字转英文	关键词	英文单词
+运算:数字转英文	模板	模板:命令行字符串
+运算:数字转英文	语句	{ long v = atol(s); static const char *w[] = {"zero","one","two","three","four","five","six","seven","eight","nine"}; if (v >= 0 && v <= 9) snprintf(s, 128, "%s", w[v]); }
+运算:数字转英文	输出	打印:字符串
+模板:命令行两字符串	代码	#include <stdio.h>\
+#include <string.h>\
+int main(int argc, char **argv) {\
+    char s[128] = "", t[128] = "";\
+    if (argc > 1) snprintf(s, sizeof s, "%s", argv[1]);\
+    if (argc > 2) snprintf(t, sizeof t, "%s", argv[2]);\
+    int ok = 1;\
+<SLOTS>\
+    printf("%s\n", ok ? "ok" : "FAIL");\
+    return ok ? 0 : 1;\
+}
+模板:命令行两字符串	种类	种类:字符串
+运算:大数乘法	关键词	大整数
+运算:大数乘法	模板	模板:命令行两字符串
+运算:大数乘法	语句	{ int la = (int)strlen(s), lb = (int)strlen(t); static int r[512]; memset(r, 0, sizeof r); for (int i = la - 1; i >= 0; i--) for (int j = lb - 1; j >= 0; j--) { int p = (la - 1 - i) + (lb - 1 - j); r[p] += (s[i] - 48) * (t[j] - 48); } char o[512]; int w = 0, k = 0; while (k < la + lb - 1 || r[k]) { int v = r[k] + w; o[k] = (char)(48 + v % 10); w = v / 10; k++; } if (w) o[k++] = (char)(48 + w); if (!k) o[k++] = 48; for (int a = 0, b = k - 1; a < b; a++, b--) { char c2 = o[a]; o[a] = o[b]; o[b] = c2; } o[k] = 0; snprintf(s, 128, "%s", o); }
+运算:大数乘法	输出	打印:字符串
+模板:命令行六整数	代码	#include <stdio.h>\
+#include <stdlib.h>\
+int main(int argc, char **argv) {\
+    long A = argc > 1 ? atol(argv[1]) : 2024;\
+    long B = argc > 2 ? atol(argv[2]) : 1;\
+    long C = argc > 3 ? atol(argv[3]) : 1;\
+    long D = argc > 4 ? atol(argv[4]) : 2024;\
+    long E = argc > 5 ? atol(argv[5]) : 1;\
+    long F = argc > 6 ? atol(argv[6]) : 31;\
+    int ok = 1;\
+<SLOTS>\
+    printf("%s\n", ok ? "ok" : "FAIL");\
+    return ok ? 0 : 1;\
+}
+模板:命令行六整数	种类	种类:六整数
+种类:六整数	起始	0
+运算:日期差	关键词	相差的天数
+运算:日期差	模板	模板:命令行六整数
+运算:日期差	语句	{ long y1 = A, m1 = B, d1 = C, y2 = D, m2 = E, d2 = F; if (m1 <= 2) { y1--; m1 += 12; } if (m2 <= 2) { y2--; m2 += 12; } long n1 = 365 * y1 + y1 / 4 - y1 / 100 + y1 / 400 + (153 * (m1 - 3) + 2) / 5 + d1; long n2 = 365 * y2 + y2 / 4 - y2 / 100 + y2 / 400 + (153 * (m2 - 3) + 2) / 5 + d2; x = n2 > n1 ? n2 - n1 : n1 - n2; }
+运算:八皇后	关键词	八皇后
+运算:八皇后	模板	模板:命令行整数
+运算:八皇后	语句	{ int nn = 8, cnt = 0; static int col[24]; for (int i = 0; i < 24; i++) col[i] = 0; int r = 0; while (r >= 0) { if (r == nn) { cnt++; r--; col[r]++; continue; } if (col[r] >= nn) { col[r] = 0; r--; if (r >= 0) col[r]++; continue; } int ok2 = 1; for (int i = 0; i < r; i++) { int d2 = col[i] - col[r]; if (d2 == 0 || d2 == r - i || d2 == i - r) { ok2 = 0; break; } } if (ok2) { col[r + 1] = 0; r++; } else col[r]++; } x = cnt; }

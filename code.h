@@ -1115,7 +1115,7 @@ static inline int code_chain(AI *ai, const char *desc, int min_ops, int need_par
             }
         }
     }
-    char body[2048];
+    char body[8192];   /* §6.811 语句可以很长（大数乘法这类），2 KB 会被静默截断 */
     int bl = snprintf(body, sizeof body, "    long x = %s;\n", startvar);
     if (bl < 0) return -2;
     for (int i = 0; i < nd; ++i) {
@@ -1129,7 +1129,7 @@ static inline int code_chain(AI *ai, const char *desc, int min_ops, int need_par
         bl += k;
     }
     for (int i = 0; i < n; ++i) {
-        char stmt[512], stmt2[512];
+        char stmt[2048], stmt2[2048];
         snprintf(stmt, sizeof stmt, "%s", stmts[i]);
         if (npv[i] > 0) {
             for (int guard = 0; guard < 8; ++guard) {     /* 同一个占位符可能出现多次 */
