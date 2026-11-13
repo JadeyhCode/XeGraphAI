@@ -45,6 +45,10 @@ REQS = [
          props=["range"]),
     dict(name="七的个数自动", desc="读入一行整数（标准输入），输出其中数字 7 出现的次数。",
          key="数字 7 出现的次数", kind="arr", family="count_digit", digit=7, examples=[], props=["range"]),
+    dict(name="偶数元素和", desc="读入一行整数（标准输入），输出其中偶数元素的和。",
+         key="偶数元素的和", kind="arr", examples=[], props=["range"]),
+    dict(name="平方和推断", desc="读入一行整数（标准输入），输出所有元素的平方和。",
+         key="元素的平方和", kind="arr", examples=[], props=["range"]),
     dict(name="绝对值和", desc="读入一行整数（标准输入），输出所有元素绝对值之和。",
          key="绝对值之和", kind="arr", examples=[("-1 2 -3\n", "6")], props=["abs_sum"]),
     dict(name="极差", desc="读入一行整数（标准输入），输出最大值与最小值之差。",
@@ -57,12 +61,42 @@ REQS = [
 ]
 
 # ---------- 示例自动生成：family → 现算期望（不需要人手写示例） ----------
+# ---------- 从描述**推断**语义族（关键词 → family），这样不必人手打 family 标记 ----------
+def infer_family(desc):
+    d = desc
+    if "绝对值" in d:
+        return ("abs_sum", {})
+    if "最大值与最小值之差" in d or "极差" in d:
+        return ("range_diff", {})
+    m = re.search(r"数字\s*(\d)", d)
+    if m and ("次数" in d or "个数" in d or "出现" in d):
+        return ("count_digit", {"digit": int(m.group(1))})
+    if "偶数" in d and ("和" in d):
+        return ("even_sum", {})
+    if "偶数" in d:
+        return ("count_even", {})
+    if "平方和" in d or "平方的和" in d:
+        return ("sum_sq", {})
+    if "最大" in d:
+        return ("max", {})
+    if "最小" in d:
+        return ("min", {})
+    if "之和" in d or "求和" in d or "加起来" in d or "总和" in d:
+        return ("sum", {})
+    if "从小到大" in d or "升序" in d or "排好" in d:
+        return ("sorted", {})
+    return (None, {})
+
+
 def auto_examples(req):
     fam = req.get("family")
+    extra = {}
+    if not fam:
+        fam, extra = infer_family(req["desc"])
     if not fam:
         return []
     if fam == "count_digit":
-        d = req.get("digit", 7)
+        d = req.get("digit", extra.get("digit", 7))
         cases = [([d], "1"), ([d, d], "2"), ([d * 11], "2"), ([1, 2, 3], "0")]
         return [(f"{' '.join(str(x) for x in v)}\n", w) for v, w in cases]
     if fam == "sum":
@@ -83,6 +117,12 @@ def auto_examples(req):
     if fam == "count_even":
         vs = [[1, 2, 4], [1, 3], [8]]
         return [(f"{' '.join(str(x) for x in v)}\n", str(sum(1 for x in v if x % 2 == 0))) for v in vs]
+    if fam == "even_sum":
+        vs = [[1, 2, 4], [3, 5], [-2, 3]]
+        return [(f"{' '.join(str(x) for x in v)}\n", str(sum(x for x in v if x % 2 == 0))) for v in vs]
+    if fam == "sum_sq":
+        vs = [[1, 2, 3], [4], [-2, 1]]
+        return [(f"{' '.join(str(x) for x in v)}\n", str(sum(x * x for x in v))) for v in vs]
     if fam == "sorted":
         vs = [[3, 1, 2], [5], [-1, 0]]
         return [(f"{' '.join(str(x) for x in v)}\n", " ".join(str(x) for x in sorted(v))) for v in vs]
