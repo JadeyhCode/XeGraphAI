@@ -12,7 +12,7 @@ BLIND18 = [
     dict(name="奇数个数", desc="写一个程序：读入一行整数（标准输入），输出奇数的个数。",
          kind="stdin", data=["1 2 3\n"], want="2"),
     dict(name="最大值位置差", desc="写一个程序：读入一行整数（标准输入），输出最大值与最小值位置之间的距离。",
-         kind="stdin", data=["5 1 9\n"], want="2"),
+         kind="stdin", data=["5 1 9\n"], want="1"),
     dict(name="字符串反转再大写", desc="写一个程序：读入一行字符串（标准输入），倒过来并把字母都变成大写。",
          kind="stdin", data=["ab\n"], want="BA"),
     dict(name="数组负数和", desc="写一个程序：读入一行整数（标准输入），输出负数元素的和。",

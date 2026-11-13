@@ -265,3 +265,4 @@ english|sh tests/english.sh
 web|sh tests/web.sh
 xe|sh tests/xe.sh
 codedep|gcc -std=c11 -O2 -Wall -Wextra -Werror -o build_codetest_dep tools/codetest_dep.c -lm && ./build_codetest_dep
+capbench|sh tests/capbench.sh
