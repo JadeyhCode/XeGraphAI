@@ -69,6 +69,39 @@ CASES = [
     dict(desc="读入一行整数（标准输入），输出最大值的 2 倍。", fn=lambda v: max(v) * 2, fmt="int"),
 ]
 
+
+
+# ---------- ①b **自己出题**：从算子代数上组合出题面（不再由人写死 24 道） ----------
+_ARR_OPS = [
+    ("输出所有元素之和", _sum, "int"),
+    ("输出最大值", _max, "int"),
+    ("输出最小值", _min, "int"),
+    ("输出所有元素的乘积", _prod, "int"),
+    ("输出正数的个数", _count_pos, "int"),
+    ("输出偶数的个数", _count_even, "int"),
+    ("输出负数的个数", _count_neg, "int"),
+    ("倒序输出这些数", _rev, "arr"),
+    ("从小到大排序后输出", _sort_asc, "arr"),
+    ("从大到小排序后输出", _sort_desc, "arr"),
+    ("输出所有元素绝对值之和", _abs_sum, "int"),
+    ("输出所有元素平方和", _sum_sq, "int"),
+]
+
+def gen_cases(seed=20261113):
+    """按算子代数生成题面：单算子 + （和/最大/最小）×（乘 k / 减 k）参数化两步。"""
+    rng = random.Random(seed)
+    cases = []
+    for phrase, fn, fmt in _ARR_OPS:
+        cases.append(dict(desc=f"读入一行整数（标准输入），{phrase}。", fn=fn, fmt=fmt))
+    for base_phrase, base_fn in (("输出所有元素之和", _sum), ("输出最大值", _max), ("输出最小值", _min)):
+        for k in (2, 3, 5):
+            cases.append(dict(desc=f"读入一行整数（标准输入），{base_phrase}再乘 {k}。",
+                              fn=(lambda f, kk: (lambda v: f(v) * kk))(base_fn, k), fmt="int"))
+        cases.append(dict(desc=f"读入一行整数（标准输入），{base_phrase}再减 1。",
+                          fn=(lambda f: (lambda v: f(v) - 1))(base_fn), fmt="int"))
+    rng.shuffle(cases)
+    return cases
+
 # ---------- ③ 起草模板库：描述关键词 → 算子语句（小、明确、可审） ----------
 DRAFTS = {
     "元素之和": ("运算:元素之和", "{ long t2 = 0; for (int i = 0; i < n; i++) t2 += v[i]; x = t2; }", None),
@@ -84,6 +117,12 @@ DRAFTS = {
     "判断是不是回文": ("运算:回文判断2", "{ int l = (int)strlen(s); while (l > 0 && (s[l-1] == 10 || s[l-1] == 13)) l--; int g = 1; for (int i = 0, j = l - 1; i < j; i++, j--) if (s[i] != s[j]) { g = 0; break; } fputs(g ? \"yes\" : \"no\", stdout); putchar(10); }", "打印:无"),
     "元素之和再乘": ("运算:和乘参数", "{ long t2 = 0; for (int i = 0; i < n; i++) t2 += v[i]; x = t2 * <P>; }", None),
     "元素之和减": ("运算:和减参数", "{ long t2 = 0; for (int i = 0; i < n; i++) t2 += v[i]; x = t2 - <P>; }", None),
+    "输出最大值再乘": ("运算:最大乘参数", "{ long m = v[0]; for (int i = 1; i < n; i++) if (v[i] > m) m = v[i]; x = m * <P>; }", None),
+    "输出最小值再乘": ("运算:最小乘参数", "{ long m = v[0]; for (int i = 1; i < n; i++) if (v[i] < m) m = v[i]; x = m * <P>; }", None),
+    "输出最大值再减": ("运算:最大减参数", "{ long m = v[0]; for (int i = 1; i < n; i++) if (v[i] > m) m = v[i]; x = m - <P>; }", None),
+    "输出最小值再减": ("运算:最小减参数", "{ long m = v[0]; for (int i = 1; i < n; i++) if (v[i] < m) m = v[i]; x = m - <P>; }", None),
+    "元素之和再减": ("运算:和减参数", "{ long t2 = 0; for (int i = 0; i < n; i++) t2 += v[i]; x = t2 - <P>; }", None),
+    "输出最小值的": ("运算:最小乘参数", "{ long m = v[0]; for (int i = 1; i < n; i++) if (v[i] < m) m = v[i]; x = m * <P>; }", None),
     "输出最大值的": ("运算:最大乘参数", "{ long m = v[0]; for (int i = 1; i < n; i++) if (v[i] > m) m = v[i]; x = m * <P>; }", None),
     "倒序输出这些数": ("运算:数组倒序输出", 'for (int i = n - 1; i >= 0; i--) printf(i == n - 1 ? "%ld" : " %ld", v[i]); printf("\\n");', "打印:无"),
 }
@@ -186,6 +225,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default=os.path.join(ROOT, "code/code_model.bin"))
     ap.add_argument("--keep", action="store_true")
+    ap.add_argument("--generate", type=int, default=0, metavar="N",
+                    help="自己出题：从算子代数生成 N 道（0 = 用内置 24 道）")
     args = ap.parse_args()
     os.makedirs(WORK, exist_ok=True)
     rng = random.Random(20261113)
@@ -196,10 +237,14 @@ def main():
     shutil.copyfile(model, os.path.join(WORK, "m.bin"))
     model = os.path.join(WORK, "m.bin")
 
+    cases = CASES
+    if args.generate > 0:
+        cases = gen_cases()[: args.generate]
+        print(f"（自己出题：{len(cases)} 道，来自算子代数，不是人写的）")
     before = 0; after = 0; drafted = 0; rejected = 0
     print("== 自举前 ==")
     results = []
-    for case in CASES:
+    for case in cases:
         ok, tot, msg = run_tests(model, case, rng)
         results.append([case, ok, tot, msg])
         before += (ok == tot)
@@ -263,7 +308,7 @@ def main():
         else:
             print(f"  起草 {name} ⇒ 仍 {ok2}/{tot2}（留作反例）")
 
-    total = len(CASES)
+    total = len(cases)
     print(f"\n== 汇总 ==\n  自举前 {before}/{total}；自举后 {after}/{total}；起草 {drafted}；无模板拒绝 {rejected}")
     if not args.keep:
         pass

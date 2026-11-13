@@ -38,5 +38,18 @@ fails=0
 AFTER_HASH=$(sha256sum code/code_model.bin | cut -d" " -f1)
 [ "$BEFORE_HASH" = "$AFTER_HASH" ] || { printf "  [FAIL] 仓库模型被改了（selfboot 只该改副本）\n"; fails=1; }
 
+
+# ② 自己出题模式：题面由算子代数生成（不是人写的），看它能不能同样学会
+OUT2=$ROOT/_t/selfboot/gen.log
+python3 tools/selfboot.py --generate 21 > "$OUT2" 2>&1
+GRC=$?
+GB=$(sed -n "s/.*自举前 \([0-9]*\)\/\([0-9]*\).*/\1/p" "$OUT2" | tail -1)
+GA=$(sed -n "s/.*自举后 \([0-9]*\)\/\([0-9]*\).*/\1/p" "$OUT2" | tail -1)
+GT=$(sed -n "s/.*自举后 [0-9]*\/\([0-9]*\).*/\1/p" "$OUT2" | tail -1)
+GB=${GB:-0}; GA=${GA:-0}; GT=${GT:-21}
+printf "  自己出题：自举前 %s/%s ⇒ 自举后 %s/%s（rc=%s）\n" "$GB" "$GT" "$GA" "$GT" "$GRC"
+[ "$GRC" -eq 0 ] || { printf "  [FAIL] 自己出题模式非零退出\n"; fails=1; }
+[ "$GB" -lt "$GT" ] || { printf "  [FAIL] 自己出题：一开始就全过，没测到缺口\n"; fails=1; }
+[ "$GA" -ge $((GT * 80 / 100)) ] || { printf "  [FAIL] 自己出题：只学会 %s/%s（要求 ≥80%%）\n" "$GA" "$GT"; fails=1; }
 [ "$fails" -eq 0 ] && printf "PASS selfboot（自举 %s→%s/%s，仓库模型未改）\n" "$B" "$A" "$T" || printf "FAIL selfboot\n"
 [ "$fails" -eq 0 ]
