@@ -1,0 +1,43 @@
+Wordless Source-Available License 1.0
+=====================================
+
+Copyright (c) 2025 JadeyhCode. All rights reserved.
+
+"Wordless" means: the source speaks for itself; no warranty is spoken, and no
+permission is spoken unless it is written here.
+
+1. Source available
+   The source code in this repository is made available for reading, studying,
+   auditing, and personal experimentation.
+
+2. Permission
+   You may:
+     (a) read, compile and run this software for personal, non-commercial study;
+     (b) quote short excerpts in discussion, papers and reviews with attribution.
+
+3. Restrictions
+   Without prior written permission from the copyright holder, you may NOT:
+     (a) use this software, in whole or in part, in any commercial product or
+         paid service;
+     (b) redistribute this software or derivative works, in source or binary
+         form, including via package registries and model/training corpora;
+     (c) train machine-learning models on this source code;
+     (d) remove or alter this license or the copyright notices.
+
+4. Contributions
+   By submitting a contribution you grant the copyright holder a perpetual,
+   worldwide, royalty-free license to use, modify and relicense it.
+
+5. No warranty
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY ARISING FROM THE
+   USE OF THE SOFTWARE.
+
+6. Termination
+   Any violation of these terms terminates your permission immediately.
+
+7. Language
+   This license is written in English; a Chinese translation is provided for
+   convenience next to each section, but the English text prevails.

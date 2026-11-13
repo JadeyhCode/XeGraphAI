@@ -1,0 +1,420 @@
+# §6.699 代码骨架知识（阶段四 M1）
+# 格式：主体<TAB>关系<TAB>客体；行尾 \ 表示续行
+任务:素数	关键词	素数
+任务:素数	关键词	质数
+任务:素数	骨架	骨架:素数
+任务:素数	排除	是素数
+任务:素数	排除	判断
+任务:素数	排除	是不是
+任务:素数	用途	命令行给上限 N，逐行输出 2..N 的素数
+骨架:素数	语言	C11
+骨架:素数	依赖	stdio.h stdlib.h
+骨架:素数	代码	#include <stdio.h>\
+#include <stdlib.h>\
+static int is_prime(long n) { if (n < 2) return 0; for (long i = 2; i * i <= n; i++) if (n % i == 0) return 0; return 1; }\
+int main(int argc, char **argv) {\
+    long N = argc > 1 ? atol(argv[1]) : 30, cnt = 0;\
+    for (long i = 2; i <= N; i++) if (is_prime(i)) { printf("%ld\n", i); cnt++; }\
+    printf("%s\n", is_prime(97) && !is_prime(91) ? "ok prime" : "FAIL prime");\
+    printf("%s\n", cnt == 10 ? "ok count" : "FAIL count");\
+    return (is_prime(97) && !is_prime(91) && cnt == 10) ? 0 : 1;\
+}
+任务:字符串倒序	关键词	倒序
+任务:字符串倒序	关键词	反转
+任务:字符串倒序	关键词	逆序
+任务:字符串倒序	关键词	反过来
+任务:字符串倒序	骨架	骨架:字符串倒序
+任务:字符串倒序	排除	整数
+任务:字符串倒序	排除	链表
+任务:字符串倒序	用途	读一行字符串（stdin），倒序输出
+骨架:字符串倒序	语言	C11
+骨架:字符串倒序	依赖	stdio.h string.h
+骨架:字符串倒序	代码	#include <stdio.h>\
+#include <string.h>\
+static void rev(const char *in, char *out) {\
+    size_t n = strlen(in);\
+    for (size_t i = 0; i < n; i++) out[i] = in[n-1-i];\
+    out[n] = 0;\
+}\
+int main(void) {\
+    char buf[256], out[256];\
+    if (fgets(buf, sizeof buf, stdin)) {\
+        size_t n = strlen(buf);\
+        while (n && (buf[n-1] == '\n' || buf[n-1] == '\r')) buf[--n] = 0;\
+        rev(buf, out);\
+        printf("%s\n", out);\
+    }\
+    rev("abc", out);\
+    int ok = strcmp(out, "cba") == 0;\
+    rev("hello world", out);\
+    ok = ok && strcmp(out, "dlrow olleh") == 0;\
+    printf("%s\n", ok ? "ok rev" : "FAIL rev");\
+    return ok ? 0 : 1;\
+}
+任务:斐波那契	关键词	斐波那契
+任务:斐波那契	关键词	fib
+任务:斐波那契	骨架	骨架:斐波那契
+任务:斐波那契	用途	读 N，输出前 N 项，空格分隔
+骨架:斐波那契	语言	C11
+骨架:斐波那契	依赖	stdio.h stdlib.h
+骨架:斐波那契	代码	#include <stdio.h>\
+#include <stdlib.h>\
+int main(int argc, char **argv) {\
+    long n = argc > 1 ? atol(argv[1]) : 10, a = 0, b = 1;\
+    for (long i = 0; i < n; i++) { printf("%ld%s", a, i + 1 < n ? " " : "\n"); long c = a + b; a = b; b = c; }\
+    long want[10] = {0,1,1,2,3,5,8,13,21,34}, x = 0, y = 1;\
+    int ok = 1;\
+    for (int i = 0; i < 10; i++) { if (i) { long z = x + y; x = y; y = z; } if (x != want[i]) ok = 0; }\
+    printf("%s\n", ok ? "ok fib" : "FAIL fib");\
+    return ok ? 0 : 1;\
+}
+任务:最值平均	关键词	最大值
+任务:最值平均	关键词	最小值
+任务:最值平均	关键词	平均值
+任务:最值平均	关键词	平均
+任务:最值平均	排除	平均数
+任务:最值平均	排除	求平均值
+任务:最值平均	排除	它们的平均
+任务:最值平均	排除	的平均
+任务:最值平均	排除	比平均值大
+任务:最值平均	骨架	骨架:最值平均
+任务:最值平均	排除	数组
+任务:最值平均	排除	空格
+任务:最值平均	排除	三个
+任务:最值平均	用途	读 N 个整数（stdin），输出 max/min/avg
+骨架:最值平均	语言	C11
+骨架:最值平均	依赖	stdio.h
+骨架:最值平均	代码	#include <stdio.h>\
+static void stats(const long *v, int n, long *mx, long *mn, double *avg) {\
+    *mx = v[0]; *mn = v[0]; double s = 0;\
+    for (int i = 0; i < n; i++) { if (v[i] > *mx) *mx = v[i]; if (v[i] < *mn) *mn = v[i]; s += v[i]; }\
+    *avg = n > 0 ? s / n : 0;\
+}\
+int main(void) {\
+    int n = 0;\
+    long v[64];\
+    if (scanf("%d", &n) != 1 || n <= 0 || n > 64) n = 5;\
+    for (int i = 0; i < n; i++) if (scanf("%ld", &v[i]) != 1) v[i] = 0;\
+    long mx = 0, mn = 0; double avg = 0;\
+    stats(v, n, &mx, &mn, &avg);\
+    printf("max=%ld min=%ld avg=%.2f\n", mx, mn, avg);\
+    long t[5] = {3,1,4,1,5}, tmx = 0, tmn = 0; double tavg = 0;\
+    stats(t, 5, &tmx, &tmn, &tavg);\
+    int ok = (tmx == 5 && tmn == 1 && tavg > 2.79 && tavg < 2.81);\
+    printf("%s\n", ok ? "ok stats" : "FAIL stats");\
+    return ok ? 0 : 1;\
+}
+任务:二分查找	关键词	二分
+任务:二分查找	关键词	查找
+任务:二分查找	排除	树
+任务:二分查找	骨架	骨架:二分查找
+任务:二分查找	用途	有序数组里找 key，输出下标或 -1
+骨架:二分查找	语言	C11
+骨架:二分查找	依赖	stdio.h
+骨架:二分查找	代码	#include <stdio.h>\
+static int bsearch_int(const int *a, int n, int key) {\
+    int lo = 0, hi = n - 1;\
+    while (lo <= hi) { int mid = lo + (hi - lo) / 2; if (a[mid] == key) return mid; if (a[mid] < key) lo = mid + 1; else hi = mid - 1; }\
+    return -1;\
+}\
+int main(void) {\
+    int a[6] = {1,3,5,7,9,11}, n = 6, k;\
+    if (scanf("%d", &k) != 1) k = 7;\
+    printf("%d\n", bsearch_int(a, n, k));\
+    int ok = bsearch_int(a, n, 7) == 3 && bsearch_int(a, n, 4) == -1 && bsearch_int(a, n, 1) == 0;\
+    printf("%s\n", ok ? "ok bsearch" : "FAIL bsearch");\
+    return ok ? 0 : 1;\
+}
+任务:单词计数	关键词	单词
+任务:单词计数	关键词	行数
+任务:单词计数	关键词	字符数
+任务:单词计数	关键词	wc
+任务:单词计数	骨架	骨架:单词计数
+任务:单词计数	排除	个数
+任务:单词计数	排除	行数和列数
+任务:单词计数	排除	文件的
+任务:单词计数	排除	词频
+任务:单词计数	排除	每个单词
+任务:单词计数	排除	一行数
+任务:单词计数	排除	最长
+任务:单词计数	排除	转成英文
+任务:单词计数	排除	英文单词
+任务:单词计数	用途	统计文件的行/词/字符数（类似 wc）
+骨架:单词计数	语言	C11
+骨架:单词计数	依赖	stdio.h
+骨架:单词计数	代码	#include <stdio.h>\
+int main(int argc, char **argv) {\
+    const char *fn = argc > 1 ? argv[1] : "/etc/hostname";\
+    FILE *f = fopen(fn, "rb");\
+    if (!f) { printf("%s\n", "FAIL open"); return 1; }\
+    long lines = 0, words = 0, chars = 0;\
+    int c, inw = 0;\
+    while ((c = fgetc(f)) != EOF) {\
+        chars++;\
+        if (c == '\n') lines++;\
+        if (c == ' ' || c == '\n' || c == '\t') inw = 0;\
+        else if (!inw) { inw = 1; words++; }\
+    }\
+    fclose(f);\
+    printf("%ld %ld %ld\n", lines, words, chars);\
+    FILE *g = fopen(fn, "rb");\
+    long self_lines = 0;\
+    if (g) { int d; while ((d = fgetc(g)) != EOF) if (d == '\n') self_lines++; fclose(g); }\
+    int ok = lines == self_lines && chars > 0 && words > 0;\
+    printf("%s\n", ok ? "ok wc" : "FAIL wc");\
+    return ok ? 0 : 1;\
+}
+任务:冒泡排序	关键词	排序
+任务:冒泡排序	关键词	冒泡
+任务:冒泡排序	关键词	从小到大
+任务:冒泡排序	排除	归并
+任务:冒泡排序	排除	实现
+任务:冒泡排序	排除	快速
+任务:冒泡排序	排除	个元素
+任务:冒泡排序	排除	证明
+任务:冒泡排序	排除	稳定性
+任务:冒泡排序	排除	拓扑
+任务:冒泡排序	骨架	骨架:冒泡排序
+任务:冒泡排序	用途	读 N 个整数（或用样例），从小到大排序后输出
+骨架:冒泡排序	语言	C11
+骨架:冒泡排序	依赖	stdio.h
+骨架:冒泡排序	代码	#include <stdio.h>\
+static void bubble(int *a, int n) {\
+    for (int i = 0; i < n - 1; i++)\
+        for (int j = 0; j < n - 1 - i; j++)\
+            if (a[j] > a[j+1]) { int t = a[j]; a[j] = a[j+1]; a[j+1] = t; }\
+}\
+int main(void) {\
+    int a[64], n = 0;\
+    while (n < 64 && scanf("%d", &a[n]) == 1) n++;\
+    if (n <= 0) { int d[6] = {5,2,9,1,5,6}; for (int i = 0; i < 6; i++) a[i] = d[i]; n = 6; }\
+    bubble(a, n);\
+    for (int i = 0; i < n; i++) printf("%d%s", a[i], i + 1 < n ? " " : "\n");\
+    int want[6] = {1,2,5,5,6,9}, ok = 1;\
+    int b[6] = {5,2,9,1,5,6};\
+    bubble(b, 6);\
+    for (int i = 0; i < 6; i++) if (b[i] != want[i]) ok = 0;\
+    printf("%s\n", ok ? "ok sort" : "FAIL sort");\
+    return ok ? 0 : 1;\
+}
+任务:矩阵乘法	关键词	矩阵
+任务:矩阵乘法	关键词	乘法
+任务:矩阵乘法	排除	矩阵元素
+任务:矩阵乘法	排除	矩阵转置
+任务:矩阵乘法	排除	矩阵平均数
+任务:矩阵乘法	排除	求逆
+任务:矩阵乘法	排除	逆矩阵
+任务:矩阵乘法	排除	的逆
+任务:矩阵乘法	排除	矩阵中最大的数
+任务:矩阵乘法	排除	对角线
+任务:矩阵乘法	排除	每一行的和
+任务:矩阵乘法	骨架	骨架:矩阵乘法
+任务:矩阵乘法	用途	两个 2x2 矩阵相乘并输出结果
+骨架:矩阵乘法	语言	C11
+骨架:矩阵乘法	依赖	stdio.h
+骨架:矩阵乘法	代码	#include <stdio.h>\
+int main(void) {\
+    int a[2][2] = {{1,2},{3,4}}, b[2][2] = {{5,6},{7,8}}, c[2][2];\
+    for (int i = 0; i < 2; i++)\
+        for (int j = 0; j < 2; j++) {\
+            c[i][j] = 0;\
+            for (int k = 0; k < 2; k++) c[i][j] += a[i][k] * b[k][j];\
+        }\
+    for (int i = 0; i < 2; i++) printf("%d %d\n", c[i][0], c[i][1]);\
+    int ok = c[0][0] == 19 && c[0][1] == 22 && c[1][0] == 43 && c[1][1] == 50;\
+    printf("%s\n", ok ? "ok matmul" : "FAIL matmul");\
+    return ok ? 0 : 1;\
+}
+任务:回文判断	关键词	回文
+任务:回文判断	关键词	对称
+任务:回文判断	骨架	骨架:回文判断
+任务:回文判断	排除	回文数
+任务:回文判断	排除	整数
+任务:回文判断	用途	判断字符串是不是回文
+骨架:回文判断	语言	C11
+骨架:回文判断	依赖	stdio.h string.h
+骨架:回文判断	代码	#include <stdio.h>\
+#include <string.h>\
+static int is_pal(const char *s) {\
+    size_t n = strlen(s);\
+    for (size_t i = 0; i < n / 2; i++) if (s[i] != s[n-1-i]) return 0;\
+    return 1;\
+}\
+int main(void) {\
+    char buf[256] = "";\
+    if (fgets(buf, sizeof buf, stdin)) {}\
+    size_t l = strlen(buf);\
+    while (l && (buf[l-1] == '\n' || buf[l-1] == '\r')) buf[--l] = 0;\
+    printf("%d\n", is_pal(buf));\
+    int ok = is_pal("racecar") && is_pal("abba") && !is_pal("abc") && is_pal("");\
+    printf("%s\n", ok ? "ok pal" : "FAIL pal");\
+    return ok ? 0 : 1;\
+}
+任务:进制转换	关键词	进制
+任务:进制转换	关键词	二进制
+任务:进制转换	关键词	十六进制
+任务:进制转换	骨架	骨架:进制转换
+任务:进制转换	排除	转十进制
+任务:进制转换	排除	二进制字符串
+任务:进制转换	用途	十进制转二/十六进制
+骨架:进制转换	语言	C11
+骨架:进制转换	依赖	stdio.h string.h stdlib.h
+骨架:进制转换	代码	#include <stdio.h>\
+#include <string.h>\
+#include <stdlib.h>\
+static void to_base(long n, int base, char *out) {\
+    const char *digits = "0123456789abcdef";\
+    char tmp[65];\
+    int i = 0;\
+    if (n == 0) tmp[i++] = '0';\
+    while (n > 0) { tmp[i++] = digits[n % base]; n /= base; }\
+    for (int j = 0; j < i; j++) out[j] = tmp[i-1-j];\
+    out[i] = 0;\
+}\
+int main(int argc, char **argv) {\
+    char b[65];\
+    long v = 0;\
+    if (argc > 1) v = atol(argv[1]);\
+    else if (scanf("%ld", &v) != 1) v = 13;\
+    to_base(v, 2, b); printf("%s\n", b);\
+    int ok = 1;\
+    to_base(13, 2, b); if (strcmp(b, "1101")) ok = 0;\
+    to_base(255, 16, b); if (strcmp(b, "ff")) ok = 0;\
+    to_base(0, 2, b); if (strcmp(b, "0")) ok = 0;\
+    printf("%s\n", ok ? "ok base" : "FAIL base");\
+    return ok ? 0 : 1;\
+}
+任务:最大公约数	关键词	最大公约数
+任务:最大公约数	关键词	gcd
+任务:最大公约数	关键词	约数
+任务:最大公约数	排除	最小公倍数
+任务:最大公约数	骨架	骨架:最大公约数
+任务:最大公约数	用途	求两个数的最大公约数
+骨架:最大公约数	语言	C11
+骨架:最大公约数	依赖	stdio.h
+骨架:最大公约数	代码	#include <stdio.h>\
+static long gcd(long a, long b) { while (b) { long t = a % b; a = b; b = t; } return a < 0 ? -a : a; }\
+int main(void) {\
+    printf("%ld\n", gcd(48, 18));\
+    int ok = gcd(48,18) == 6 && gcd(17,5) == 1 && gcd(0,9) == 9 && gcd(100,75) == 25;\
+    printf("%s\n", ok ? "ok gcd" : "FAIL gcd");\
+    return ok ? 0 : 1;\
+}
+任务:字符统计	关键词	字符统计
+任务:字符统计	关键词	字母
+任务:字符统计	关键词	数字个数
+任务:字符统计	骨架	骨架:字符统计
+任务:字符统计	排除	元音
+任务:字符统计	排除	大写
+任务:字符统计	排除	小写
+任务:字符统计	排除	删掉字母
+任务:字符统计	排除	删除字母
+任务:字符统计	排除	去掉字母
+任务:字符统计	排除	凯撒
+任务:字符统计	排除	加密
+任务:字符统计	用途	统计字符串里的字母/数字/空格/其他字符个数
+骨架:字符统计	语言	C11
+骨架:字符统计	依赖	stdio.h
+骨架:字符统计	代码	#include <stdio.h>\
+int main(void) {\
+    const char *s = "Hello 42 world!";\
+    int letters = 0, digits = 0, spaces = 0, other = 0;\
+    for (const char *p = s; *p; p++) {\
+        if ((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z')) letters++;\
+        else if (*p >= '0' && *p <= '9') digits++;\
+        else if (*p == ' ') spaces++;\
+        else other++;\
+    }\
+    printf("letters=%d digits=%d spaces=%d other=%d\n", letters, digits, spaces, other);\
+    int ok = letters == 10 && digits == 2 && spaces == 2 && other == 1;\
+    printf("%s\n", ok ? "ok chars" : "FAIL chars");\
+    return ok ? 0 : 1;\
+}
+任务:1到N求和	关键词	1 到
+任务:1到N求和	关键词	1到
+任务:1到N求和	关键词	求和
+任务:1到N求和	关键词	的和
+任务:1到N求和	排除	线程
+任务:1到N求和	排除	平方
+任务:1到N求和	排除	数组
+任务:1到N求和	排除	空格
+任务:1到N求和	排除	立方
+任务:1到N求和	排除	三个数
+任务:1到N求和	排除	三个整数
+任务:1到N求和	排除	两个整数
+任务:1到N求和	排除	偶数
+任务:1到N求和	排除	矩阵
+任务:1到N求和	排除	的个数
+任务:1到N求和	骨架	骨架:1到N求和
+任务:1到N求和	用途	命令行给 N，输出 1..N 的和
+骨架:1到N求和	语言	C11
+骨架:1到N求和	依赖	stdio.h stdlib.h
+骨架:1到N求和	代码	#include <stdio.h>\
+#include <stdlib.h>\
+static long sum_to(long n) { long s = 0; for (long i = 1; i <= n; i++) s += i; return s; }\
+int main(int argc, char **argv) {\
+    long N = argc > 1 ? atol(argv[1]) : 10;\
+    printf("%ld\n", sum_to(N));\
+    int ok = sum_to(10) == 55;\
+    printf("%s\n", ok ? "ok sum" : "FAIL sum");\
+    return ok ? 0 : 1;\
+}
+任务:华氏转摄氏	关键词	华氏
+任务:华氏转摄氏	关键词	摄氏
+任务:华氏转摄氏	关键词	温度转换
+任务:华氏转摄氏	排除	转成华氏
+任务:华氏转摄氏	排除	转换成华氏
+任务:华氏转摄氏	排除	读入摄氏
+任务:华氏转摄氏	排除	输入摄氏
+任务:华氏转摄氏	骨架	骨架:华氏转摄氏
+任务:华氏转摄氏	用途	命令行给华氏温度，输出摄氏温度（两位小数）
+骨架:华氏转摄氏	语言	C11
+骨架:华氏转摄氏	依赖	stdio.h stdlib.h
+骨架:华氏转摄氏	代码	#include <stdio.h>\
+#include <stdlib.h>\
+static double f2c(double f) { return (f - 32.0) * 5.0 / 9.0; }\
+int main(int argc, char **argv) {\
+    double f = argc > 1 ? atof(argv[1]) : 212.0;\
+    printf("%.2f\n", f2c(f));\
+    double t = f2c(212.0);\
+    int ok = (t > 99.999 && t < 100.001);\
+    printf("%s\n", ok ? "ok f2c" : "FAIL f2c");\
+    return ok ? 0 : 1;\
+}
+任务:闰年	关键词	闰年
+任务:闰年	骨架	骨架:闰年
+任务:闰年	用途	命令行给年份，闰年输出 1，否则 0
+骨架:闰年	语言	C11
+骨架:闰年	依赖	stdio.h stdlib.h
+骨架:闰年	代码	#include <stdio.h>\
+#include <stdlib.h>\
+static int is_leap(long y) { return (y % 4 == 0 && y % 100 != 0) || y % 400 == 0; }\
+int main(int argc, char **argv) {\
+    long y = argc > 1 ? atol(argv[1]) : 2024;\
+    printf("%d\n", is_leap(y));\
+    int ok = is_leap(2024) && !is_leap(1900) && is_leap(2000);\
+    printf("%s\n", ok ? "ok leap" : "FAIL leap");\
+    return ok ? 0 : 1;\
+}
+任务:完全平方数	关键词	完全平方数
+任务:完全平方数	关键词	平方数
+任务:完全平方数	骨架	骨架:完全平方数
+任务:完全平方数	用途	命令行给整数，是完全平方数输出 1，否则 0
+骨架:完全平方数	语言	C11
+骨架:完全平方数	依赖	stdio.h stdlib.h
+骨架:完全平方数	代码	#include <stdio.h>\
+#include <stdlib.h>\
+static int is_square(long n) {\
+    if (n < 0) return 0;\
+    long lo = 0, hi = 46341;\
+    while (lo <= hi) { long mid = lo + (hi - lo) / 2; long sq = mid * mid; if (sq == n) return 1; if (sq < n) lo = mid + 1; else hi = mid - 1; }\
+    return 0;\
+}\
+int main(int argc, char **argv) {\
+    long n = argc > 1 ? atol(argv[1]) : 49;\
+    printf("%d\n", is_square(n));\
+    int ok = is_square(49) && !is_square(50) && is_square(0);\
+    printf("%s\n", ok ? "ok square" : "FAIL square");\
+    return ok ? 0 : 1;\
+}
+

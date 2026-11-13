@@ -1,0 +1,265 @@
+# tests/suites.txt — 回归套件清单：**唯一一份**
+#
+# tests/all.sh 按这个清单跑（第 0 步「编译 + 探针」与最后一步「交互冒烟」写死在 all.sh 里）。
+# 别在别处再列一遍套件名 —— 本项目的老毛病是「同一份清单两处写，改一处漏一处」。
+#
+# 格式：一行一套，`<名字>|<命令>`（`#` 开头与空行忽略）
+#   名字：日志文件名（_t/par/<名字>.log）+ 只跑几套时的筛选键（SUITES="features tokenop"）
+#   命令：在**该套件自己的沙箱目录**里执行（cwd = 沙箱，不是仓库根）。沙箱里
+#         tests/ tools/ 是真副本，*.h *.c 与语料是软链，model.bin / frames.txt /
+#         relations.txt 是真副本 —— 所以套件爱怎么改都不会串台。
+#   $CORPUS：all.sh 传进来的语料文件（默认 _corpus.txt），由 all.sh export。
+#
+# 顺序 = 起跑顺序。**慢的排前面**：并行时它们先起跑、决定总时长。
+# 每条后面的「本机实测 Xs」是 2026-10-07 串行整包量出来的（那一轮的对照表在
+# docs/audit-vs-deepseek看这里.md 的 §6.42）；换机器/改套件后可以重新量再重排。
+# 加一套：在这里加一行 + 写 tests/<名字>.sh；别忘 `codes/` 镜像同步要带上本文件。
+#
+# ⚠ **C 级套件的退出码必须真的传出来**（2026-10-10 量出来的洞）：原先那几条写的是
+#   `./build_xxx | tail -3` —— 管道的退出码是 `tail` 的（永远 0），于是
+#   **C 测试自己报的失败在整包汇总里是隐形的**（实测：`AIP_THINKOBJ=1` 跑整包时
+#   delibtest 报了「125 项通过，5 项失败」，而整套照旧显示 [OK]）。
+#   现在的写法是 `./build_xxx > ctest.log 2>&1; rc=$?; tail -N ctest.log; [ "$rc" -eq 0 ]`：
+#   输出照样只留尾巴几行，但退出码**真的**决定这一套红不红。
+
+# 微内核端到端（CLI）：::mod/::safe/::patch 三个入口 + 自修改结构随图存盘（本机实测 22.9s）
+selfmod|sh tests/selfmod.sh
+# Token 行为端到端（CLI）：::op 接线插词、临时 Token 不存盘、修正的记忆持久（本机实测 22.3s）
+tokenop|sh tests/tokenop.sh
+# 存/读无损，且加载后行为与原地训练等价（最重的一套：两遍语料 + 两次规范 dump 比对）（本机实测 20.9s）
+model_roundtrip|sh tests/model_roundtrip.sh $CORPUS
+# 对应 deepseek看这里.txt 的十项能力逐条核验（本机实测 20.2s）
+features|sh tests/features.sh
+speed_scale|sh tests/speed_scale.sh $MODEL
+# 思维循环端到端（CLI）：::delib/::pending/::thinkrun/::thinkout/::thinkbudget（本机实测 19.0s）
+thinking|sh tests/thinking.sh
+# 推理沉淀：想通的记下来（标成推出来的）/ 复用 / 观测压过 / 撤销 / 存读（本机实测 17.4s）
+consolidate|sh tests/consolidate.sh
+# 观测改口语义：后说的替掉先说的（on/off A/B 对照 + 装载边界）（本机实测 17.0s）
+revision|sh tests/revision.sh
+# 反糟粕端到端（CLI）：因果要协变、不知道不说成知道、别人的看法不是我的知识（本机实测 16.4s）
+biases|sh tests/biases.sh
+# 元命令表：命令名只有一份（帮助由表生成），帮助里每条都真的认得（本机实测 16.4s）
+cmdtable|sh tests/cmdtable.sh
+# 帧读关联链产物（Gate B）的 A/B 与反面看护（本机实测 14.5s）
+framegate_ab|sh tests/framegate_ab.sh
+# Token 行为/临时 Token/修正的记忆自测（C 级）：接线/插词/中转/不存盘/预算真扣（本机实测 6.9s）
+optest|gcc -std=c11 -O2 -Wall -Wextra -o build_optest tools/optest.c -lm && ./build_optest > ctest.log 2>&1; rc=$?; tail -3 ctest.log; [ "$rc" -eq 0 ]
+# L3 神经表示：emb 真学出来了 + 钉住它的边界（本机实测 6.3s）
+embed|gcc -std=c11 -O2 -Wall -Wextra -Wpedantic -o build_slotprobe tools/slotprobe.c -lm && sh tests/embed.sh
+# 归属：每个人一份信念表（持久、不进我的知识、问他就查他的）（本机实测 6.1s）
+belief|sh tests/belief.sh
+# 思维循环自测（C 级）：议程/反方向/矛盾/跨轮/铁律/元认知/UTF-8（本机实测 4.7s）
+delibtest|gcc -std=c11 -O2 -Wall -Wextra -o build_delibtest tools/delibtest.c -lm && ./build_delibtest > ctest.log 2>&1; rc=$?; tail -3 ctest.log; [ "$rc" -eq 0 ]
+# 四个局限：多层假设 / 独占健全否定 / 假设不被接管 / 嵌套+归属（本机实测 4.2s）
+logic4|sh tests/logic4.sh
+# L2 关系层：静态知识 / 传递推理 / 对话中现学知识 / 持久化（本机实测 4.0s）
+relations|sh tests/relations.sh
+# 切分可选：拆解 / 合并 / 中转词容错 / 碎片护栏（本机实测 3.8s）
+segmentation|sh tests/segmentation.sh
+# 反事实：假设世界可推、不越界、能外推、**绝不进图**（本机实测 3.6s）
+hypothesis|sh tests/hypothesis.sh
+# 现场造词：没见过的复合词造成 Token 并现场接线（本机实测 3.6s）
+coining|sh tests/coining.sh
+teach|sh tests/teach.sh
+# 追问回话（CLI）：它承认推不出来 ⇒ 用户回「会/不 会」就记进图（默认关，AIP_ASKBACK=1）（本机实测 2s）
+askback|sh tests/askback.sh
+# 自然说法里的新词（默认关，AIP_NATCOIN=1）：造词 + 学一条核心关系，垃圾形状不认（本机实测 3s）
+natcoin|sh tests/natcoin.sh
+# 互动通道端到端（跨功能一个进程聊到底：造词/否定/纠正/继承例外/追问/新词问句/存盘重载）（本机实测 5s）
+interact|sh tests/interact.sh
+# 会话图事实一致性（读 session.bin；14 条真事实 + 4 组正反一致 + 图里查得到）（本机实测 8s）
+session_facts|sh tests/session_facts.sh
+# 周期性段真的会跑（叙事/诊断/漂移/想象/内部对话；520 轮 ≈ 2.5s）—— 订正"走不到"那个误判
+cadence|sh tests/cadence.sh
+# 健壮性（固定种子）：120 条随机句 + 8 条病态输入，不崩、都答（本机实测 4s）
+fuzz|sh tests/fuzz.sh
+# 端到端自洽：教 14 条 → 问 14 条全对；存盘重载后 6 条仍对（本机实测 3s）
+consistency|sh tests/consistency.sh
+natrel|sh tests/natrel.sh
+# 验证器自身的测试：伪造/非法/断链/假依据必须被拒（本机实测 3.6s）
+dertest|gcc -std=c11 -O2 -o build_dertest tools/dertest.c -lm && ./build_dertest model.bin > ctest.log 2>&1; rc=$?; tail -12 ctest.log; [ "$rc" -eq 0 ]
+# §6.564 多智能体地基：一个进程两个 AI（各记各的修改账）+ 指针标签往返
+multiagent|gcc -std=c11 -O2 -Wall -Wextra -o build_multiagent tools/multiagent.c -lm && ./build_multiagent > ctest.log 2>&1; rc=$?; tail -6 ctest.log; [ "$rc" -eq 0 ]
+# §6.565 边数组收口：读边只走 token_assocs（局部加载的前置）
+assocaudit|sh tests/assocaudit.sh > ctest.log 2>&1; rc=$?; tail -6 ctest.log; [ "$rc" -eq 0 ]
+# §6.566 局部加载：段文件 + 卸下 + 按需读回（指针打 AIP_PTR_DISK 标签）
+partprobe|gcc -std=c11 -O2 -Wall -Wextra -o build_partprobe tools/partprobe.c -lm && ./build_partprobe > ctest.log 2>&1; rc=$?; tail -8 ctest.log; [ "$rc" -eq 0 ]
+# §6.580 跨脑知识语义：照抄（确定性迁移）/ 本地优先 + 冲突可见 / force 覆盖 vs 并列
+xbrain|gcc -std=c11 -O2 -Wall -Wextra -o build_xbrain tools/xbrain.c -lm && ./build_xbrain > ctest.log 2>&1; rc=$?; tail -6 ctest.log; [ "$rc" -eq 0 ]
+# §6.582 并发：4 线程各一个脑并行问答，结果**逐字节等于串行**；共享层多线程读/重建/并发释放
+# §6.625 失败时**打全日志**（以前只 tail -7，红的时候看不到是哪一项 —— 第 46 轮就吃了这个亏）
+conc|gcc -std=c11 -O2 -Wall -Wextra -o build_concprobe tools/concprobe.c -lm -pthread && ./build_concprobe model.bin > ctest.log 2>&1 && ./build_concprobe model.bin --teach >> ctest.log 2>&1 && ./build_concprobe model.bin --paper >> ctest.log 2>&1; rc=$?; if [ "$rc" -eq 0 ]; then tail -7 ctest.log; else cat ctest.log; fi; [ "$rc" -eq 0 ]
+# §6.588 「教了就忘」回归：教 10 条 → 60 轮维护（巩固/衰减/GC）→ 一条不少、都问得出来、存读还在
+durable|gcc -std=c11 -O2 -Wall -Wextra -o build_durableprobe tools/durableprobe.c -lm && ./build_durableprobe model.bin > ctest.log 2>&1; rc=$?; tail -8 ctest.log; [ "$rc" -eq 0 ]
+# §6.585 交互学习可用性：教新词/嵌套不误撤/互不包含撤旧并说清/极性改口/存读还在
+learnprobe|gcc -std=c11 -O2 -Wall -Wextra -o build_learnprobe tools/learnprobe.c -lm && ./build_learnprobe model.bin > ctest.log 2>&1; rc=$?; tail -8 ctest.log; [ "$rc" -eq 0 ]
+# §6.584 不变式找 bug：固定种子随机会话（教/问/否定/动态谓语/parts/流水/GC/存读），每一步验图的不变式
+# §6.599 随机动作集已扩到 `::op` 原语 / 代码区（词法往返、修法表、观测标记）/ 多脑三模式
+# ＋"第二个脑存盘再切回"。三个种子跑完都过才算过（只跑一个种子容易漏掉某条新分支）。
+bughunt|gcc -std=c11 -O2 -Wall -Wextra -o build_bughunt tools/bughunt.c -lm && { ./build_bughunt model.bin 20261025 300 > ctest.log 2>&1 && ./build_bughunt model.bin 1234 300 >> ctest.log 2>&1 && ./build_bughunt model.bin 777 300 >> ctest.log 2>&1; }; rc=$?; tail -8 ctest.log; [ "$rc" -eq 0 ]
+# §6.644 阶段二长链验收：论文→待证→确认→规则→证明→出处（只走仓库命令，不联网）
+e2e_paper|sh tests/e2e_paper.sh > ctest.log 2>&1; rc=$?; tail -8 ctest.log; [ "$rc" -eq 0 ]
+# §6.678/§6.679 PDF 取文字：自带 inflate + 内容流文本算子 + 按字体的 ToUnicode（探针 + CLI + 坏文件）
+pdf|sh tests/pdf.sh > ctest.log 2>&1; rc=$?; tail -8 ctest.log; [ "$rc" -eq 0 ]
+# §6.679 真 PDF 与 pdftotext 的**逐词**对照（不给参数就跑夹具，召回必须 100%；对外部裁判缺席则 SKIP）
+pdf_real|sh tests/pdf_real.sh > ctest.log 2>&1; rc=$?; tail -6 ctest.log; [ "$rc" -eq 0 ]
+# §6.688 故障注入：截断档/位翻转/只读目录/配额耗尽/SIGKILL 半路/并发写同一路径（六类都要"明说"）
+faults|sh tests/faults.sh > ctest.log 2>&1; rc=$?; tail -8 ctest.log; [ "$rc" -eq 0 ]
+# §6.689 长跑不涨：只读循环跑 N 与 2N 两段，RSS 差 ≤5%、图计数完全相同、答复不漂
+soak|sh tests/soak.sh > ctest.log 2>&1; rc=$?; tail -6 ctest.log; [ "$rc" -eq 0 ]
+# §6.680 联网检索：默认关 / 白名单精确匹配 / 只认 https / 被拒也记账（**离线**；真抓要 AIP_NET_LIVE=1）
+net|sh tests/net.sh > ctest.log 2>&1; rc=$?; tail -8 ctest.log; [ "$rc" -eq 0 ]
+# §6.682 性能量尺（阶段三 M0）：五指标 min/中位/max + 机器指纹 + **图真的载入了**的语义看护
+perf|sh tests/perf.sh S 3 0 > ctest.log 2>&1; rc=$?; tail -6 ctest.log; [ "$rc" -eq 0 ]
+# §6.632 规模门槛：合成大图（**S 档 3 秒**；M 档约 100 秒，只在手动跑时用 M/L）
+scale|sh tests/scale.sh S > ctest.log 2>&1; rc=$?; tail -8 ctest.log; [ "$rc" -eq 0 ]
+# §6.617 写-跑-看错-改 的机械闭环（真机跑 gcc；要 ::act on，只在 _t/work 里发生）
+codetry|sh tests/codetry.sh > ctest.log 2>&1; rc=$?; tail -8 ctest.log; [ "$rc" -eq 0 ]
+# §6.606 真实用户会话验收：教→问→改口→冲突→存读→切脑（一段像人说话的剧本走完）
+e2e_session|sh tests/e2e_session.sh > ctest.log 2>&1; rc=$?; tail -8 ctest.log; [ "$rc" -eq 0 ]
+# §6.600 命令面随机会话：切脑 / 存读 / 局部加载 / op 组合（固定种子，跑完必须 revcheck 缺 0 条）
+# §6.691 **加量到 20×200**（原来 6×40）：扩量之后当场抓到 `::brain save N` 顺着空槽解引用的 segfault；
+# 种子 10/12/17 是当时崩过的三个 —— 留在整包里当回归看护。重活（bughunt 3000 步）在 tests/fuzz_long.sh。
+cmdfuzz|sh tests/cmdfuzz.sh 20 200 > ctest.log 2>&1; rc=$?; tail -6 ctest.log; [ "$rc" -eq 0 ]
+# §6.699 代码知识本身要好：骨架单独编+跑绿、灌得进图查得出来、code_model.bin ≥10⁵ 边且载入/存盘 ≤2 s
+codeknow|sh tests/codeknow.sh > ctest.log 2>&1; rc=$?; tail -6 ctest.log; [ "$rc" -eq 0 ]
+# §6.698 「独立写代码」的尺子：A 段修复必须全绿；B 段（中文描述→可跑程序）是阶段四目标，现在 0/6 是基线
+codebench|sh tests/codebench.sh > ctest.log 2>&1; rc=$?; tail -5 ctest.log; [ "$rc" -eq 0 ]
+# §6.695 扩图不改语义：原图 vs 原图+2000 条**无关事实**，247 条答复必须逐字相同
+scale_inv|sh tests/scale_inv.sh > ctest.log 2>&1; rc=$?; tail -6 ctest.log; [ "$rc" -eq 0 ]
+# §6.692/§6.693 并发 + **大图**：造 5 万词/20 万边的合成图，再跑同一套并发看护
+# （TSan 在 10⁷ 边上会跑到几十分钟 ⇒ 这里只到 20 万边；图更大时的并发靠 ASan 手动验，见 §6.693）
+conc_big|sh tests/conc_big.sh > ctest.log 2>&1; rc=$?; tail -6 ctest.log; [ "$rc" -eq 0 ]
+# §6.691 加量模糊的**入口自检**（整包里只跑小参数：确认脚本本身能用；重活在 `tests/fuzz_long.sh` 手动跑）
+fuzz_long|sh tests/fuzz_long.sh 60 6 40 > ctest.log 2>&1; rc=$?; tail -5 ctest.log; [ "$rc" -eq 0 ]
+# §6.583 跨进程并发写同一份文件：唯一临时名 + 原子替换（旧实现会失败/写坏；本套抓得到）
+concfiles|sh tests/concfiles.sh > ctest.log 2>&1; rc=$?; tail -6 ctest.log; [ "$rc" -eq 0 ]
+# §6.582 并发看护（TSan）：数据竞争必须 0（约 50s；机器 ASLR 让 TSan 起不来时显式 SKIP）
+conc_tsan|sh tests/conc_tsan.sh
+# §6.581 池级共享：emb 引用计数共享 + 写前复制（边存 Token* ⇒ 边数组不能共享，探针里也量了"省多少"）
+poolshare|gcc -std=c11 -O2 -Wall -Wextra -o build_poolshare tools/poolshare.c -lm && ./build_poolshare model.bin > ctest.log 2>&1; rc=$?; tail -6 ctest.log; [ "$rc" -eq 0 ]
+# §6.567 真实图上量局部加载（4 万条边：问 50 词读回多少段/字节）
+partbench|gcc -std=c11 -O2 -Wall -Wextra -o build_partbench tools/partbench.c -lm && ./build_partbench model.bin > ctest.log 2>&1; rc=$?; tail -10 ctest.log; [ "$rc" -eq 0 ]
+# 反糟粕自测（C 级）：一次巧合不是规律 / 反事实真削弱 / 不虚构 / 不自我印证 / 不空想造事实 / 不从众 / 不泛化（本机实测 3.2s）
+biastest|gcc -std=c11 -O2 -Wall -Wextra -o build_biastest tools/biastest.c -lm && ./build_biastest > ctest.log 2>&1; rc=$?; tail -3 ctest.log; [ "$rc" -eq 0 ]
+# 假设的作用域回溯：按序号/主语/内容撤**指定**那层（本机实测 2.7s）
+hypo_scope|sh tests/hypo_scope.sh
+# 假设进检索/帧层：与假设相反的话被否决，并记在链上（本机实测 2.6s）
+hypo_frames|sh tests/hypo_frames.sh
+# 推导层：链结构化 / 验证器在验 / 缺口不断言 / 语言是投影（本机实测 2.5s）
+derivation|sh tests/derivation.sh
+# 微内核自测（C 级）：队列去重/预算/每条拒绝理由/检测器/补丁故障隔离/冻结（本机实测 2.4s）
+microtest|gcc -std=c11 -O2 -Wall -Wextra -o build_microtest tools/microtest.c -lm && ./build_microtest > ctest.log 2>&1; rc=$?; tail -3 ctest.log; [ "$rc" -eq 0 ]
+# 思维链：骨架→校验→降级 咬合，降级答复可关（本机实测 2.1s）
+cot|sh tests/cot.sh
+# 结构化帧生成（语料里没写过的句子）（本机实测 1.5s）
+frames|sh tests/frames.sh
+# 缺前提 → 否定能力：训练数据里没有的结论也能推出来（本机实测 1.2s）
+prerequisite|sh tests/prerequisite.sh
+# 清单自检：疑问词/虚词/助词/规则/关系表里没有重复项，两张 frame 词表不分家（本机实测 0.7s）
+dupcheck|gcc -std=c11 -O2 -Wall -Wextra -o build_dupcheck tools/dupcheck.c -lm && ./build_dupcheck > ctest.log 2>&1; rc=$?; tail -3 ctest.log; [ "$rc" -eq 0 ]
+# 受审的外部执行 + 写文件（CLI）：默认关 / 白名单 / 边界 / **没有 shell** / 超时被杀 / 输出变观测 / 审计账
+#   （本机实测 17.5s 是**单跑**时的自编 16s；整包内复用第 0 步的二进制 ⇒ ~1.5s）
+action|sh tests/action.sh
+# 原语语言的干跑校验 + ASCII 代码词法（CLI）：默认关 / 六条判据 / 干跑不 intern / 没过就不执行 /
+#   `分割`=清空整栈（按真实行为）/ `展开` 栈深不确定就跳过记账 / `::lex` 往返判据 / `::ascii` 接进 ::code
+#   （本机实测：整包内复用第 0 步的二进制 ⇒ ~1.5s；单跑时自编 ~16s + 5 个小会话）
+asmcheck|sh tests/asmcheck.sh
+# 「独占」由数据判定：可印证、可改口、改口后推理跟着变（本机实测 0.07s —— 它用预编好的 build_aip + 小语料，是真的快；评审以为 0.0s 是没量）
+exclusivity|sh tests/exclusivity.sh
+# §6.352 数据桶计数看护：五次"桶满了静默丢弃"之后加的（文件行数 vs 加载数；shape 含自动变体）
+patcount|sh tests/patcount.sh
+# §6.371 长行/丢行自检：512 以内的长关键词要能加载、超长的必须喊、正常数据必须干净
+patlong|sh tests/patlong.sh
+# §6.378 每个数据桶都要"关掉就变"：死桶/探针没走它，套件当场红
+bucketload|sh tests/bucketload.sh
+# §6.710 .c 片段知识：抽得出来 + 编译门挡得住坏的 + ::code frag 查得到 + 代码单独编得过
+fragknow|sh tests/fragknow.sh > ftest.log 2>&1; rc=$?; tail -6 ftest.log; [ "$rc" -eq 0 ]
+# §6.711 7B 分片语料（.c7b）：生成器确定性 + 每片自洽 + 断点续跑 + ::parts corpus 能挂能查 + 坏文件拒
+corpus7b|sh tests/corpus7b.sh > ctest.log 2>&1; rc=$?; [ "$rc" -eq 0 ] || cat ctest.log; tail -8 ctest.log; [ "$rc" -eq 0 ]
+# §6.712 公开语料（Wikidata NT）：转换/字面量跳过/进图可查 + v2（片内属性表，绕开 64 关系上限）
+wdcorpus|sh tests/wdcorpus.sh > wtest.log 2>&1; rc=$?; [ "$rc" -eq 0 ] || cat wtest.log; tail -6 wtest.log; [ "$rc" -eq 0 ]
+# §6.713 **扩完的图有没有用**：真知识（Wikidata v2）+ 代码知识（418 749 边）+ 7B 语料分片，各出一组题
+usegraph|sh tests/usegraph.sh > utest.log 2>&1; rc=$?; [ "$rc" -eq 0 ] || cat utest.log; tail -8 utest.log; [ "$rc" -eq 0 ]
+# §6.714 可证明的展开：实例继承（P31+P279*）+ 部分传递（P361*），非层级不派生、证据链、深度上限
+closure|sh tests/closure.sh > cltest.log 2>&1; rc=$?; [ "$rc" -eq 0 ] || cat cltest.log; tail -6 cltest.log; [ "$rc" -eq 0 ]
+
+# §6.757 中文资料→知识的泛化：说法归一（是…的一种/可以/生活在/害怕/喜爱/具有）后必须落到规范关系
+zhgen|sh tests/zhgen.sh > zhgen.log 2>&1; rc=$?; [ "$rc" -eq 0 ] || cat zhgen.log; tail -3 zhgen.log; [ "$rc" -eq 0 ]
+
+# §6.758 糖果推理（排除法/约束求解）：::solve —— 3×3、两条已知、4×4 链式、约束不够不硬猜
+candy|sh tests/candy.sh > candy.log 2>&1; rc=$?; [ "$rc" -eq 0 ] || cat candy.log; tail -3 candy.log; [ "$rc" -eq 0 ]
+
+# §6.760 从例句归纳说法族（看两条 ⇒ 会一族）+ ::law 逻辑律进数据
+induce|sh tests/induce.sh > induce.log 2>&1; rc=$?; [ "$rc" -eq 0 ] || cat induce.log; tail -3 induce.log; [ "$rc" -eq 0 ]
+
+# §6.762 框式说法：以X为食/为主食/为生/为家（内置 + 归纳）
+circumfix|sh tests/circumfix.sh > circumfix.log 2>&1; rc=$?; [ "$rc" -eq 0 ] || cat circumfix.log; tail -3 circumfix.log; [ "$rc" -eq 0 ]
+
+# §6.764 说法映射存进图里（擅长 --[同义]--> 会），抽取器从图读，不靠 paraphrase.map
+graphmap|sh tests/graphmap.sh > graphmap.log 2>&1; rc=$?; [ "$rc" -eq 0 ] || cat graphmap.log; tail -3 graphmap.log; [ "$rc" -eq 0 ]
+
+# §6.765-767 三种语言件都能存图里：框式模式 / 逻辑律 / 帧知识
+graphsink|sh tests/graphsink.sh > graphsink.log 2>&1; rc=$?; [ "$rc" -eq 0 ] || cat graphsink.log; tail -3 graphsink.log; [ "$rc" -eq 0 ]
+
+# §6.768 帧定义完整进图 + ::framesync 校验（图 = 内存 FrameSet 的忠实镜像）
+framesink|sh tests/framesink.sh > framesink.log 2>&1; rc=$?; [ "$rc" -eq 0 ] || cat framesink.log; tail -3 framesink.log; [ "$rc" -eq 0 ]
+
+# §6.770 自由图符号（可命名/互连/临时挂知识/不污染/可回收/稀疏激活）
+freesym|sh tests/freesym.sh > freesym.log 2>&1; rc=$?; [ "$rc" -eq 0 ] || cat freesym.log; tail -3 freesym.log; [ "$rc" -eq 0 ]
+
+# §6.771 出厂模型指纹：model.bin 是标定产物（加 2 条事实就会让行为套件红）
+factorymodel|sh tests/factorymodel.sh > factorymodel.log 2>&1; rc=$?; [ "$rc" -eq 0 ] || cat factorymodel.log; tail -3 factorymodel.log; [ "$rc" -eq 0 ]
+
+# §6.774 行为基线重标定（出厂基线 + 帧模型核心探针一致）
+rebake|sh tests/rebake.sh > rebake.log 2>&1; rc=$?; [ "$rc" -eq 0 ] || cat rebake.log; tail -3 rebake.log; [ "$rc" -eq 0 ]
+# 基准门（§6.775）：跑 tools/benchmark.sh --fast，卡「能力 ≥ 90% 且 ≥60 条 / ::rel ≤ 60 µs / 载入 ≤ 400 ms」
+# 尺子是 tools/benchmark.sh + tests/fixtures/bench/*（改电池/改脚本 = 改口径，旧报告的数作废）
+bench|sh tests/bench.sh
+# 长/杂输入不许崩（§6.778）：HLE 87/2158 与 SWE-bench 13/300 的"无回答"其实是 SIGSEGV
+# （frame.h fr_generate 合并分支栈越界）。这一套喂长英文/长中文/代码围栏/2 万字符单行
+longinput|sh tests/longinput.sh
+# §6.779 ARC 归纳：**变换表在图上**（sync/list/off/on 改的是图上的事实）+ 解得出/解不出/坏输入
+arc|sh tests/arc.sh
+# §6.781 说法归一表沉进图：教一条 `拿手 --[同义]--> 会` 就让新句子归一；内置表 sync 进图 + list 校验 + 存读
+parasink|sh tests/parasink.sh
+# §6.782 帧默认来源改成图：图里有帧库就用图，没有退回 frames.txt；图/文件两条来源答复逐条相同
+framedefault|sh tests/framedefault.sh
+# §6.784 四张小表（宾语后缀/前缀、主语后缀、可拆动词）从图里扩展：教一条就生效，含 sync 与存读
+tablesink|sh tests/tablesink.sh
+# §6.789 ARC 求解器的随机/边界看护：24 个随机任务（10 种形状×8 种变换）+ 5 个病态输入，只要求不崩有结论
+arcfuzz|sh tests/arcfuzz.sh
+# §6.790 每个 ARC 原语一道"只有它能解"的题：12 个原语的功能级回归（题现造，不依赖数据集）
+arcops|sh tests/arcops.sh
+# §6.793 动态关系的否定：边上真打否定位、::rel 显示不拿、::solve 能用动态关系推、存读还在
+dynneg|sh tests/dynneg.sh
+# §6.794 `::why 猫 不 会 飞` 这类否定问法：正反四条都要对 + 推导显示否定边
+whynot|sh tests/whynot.sh
+# §6.795 极性一致：::contradict 要报"同一对词既有肯定又有否定"；::why / ::der 支持动态关系
+polarity|sh tests/polarity.sh
+# §6.797 说法层两张表（引导语/没听懂）从图里也能来：关掉文件后答复逐字相同的对照实验
+patternsink|sh tests/patternsink.sh
+# §6.798 算术能力：精确有理数 + 中文数字/算子 + 等差求和 + 三条"不许瞎给"的边界
+calc|sh tests/calc.sh
+# §6.800 单位换算/百分比：量纲不符拒绝、表下沉到图（纯图模式答复相同、改系数结果跟着变）
+units|sh tests/units.sh
+# §6.804 日期运算（给明确日期才算、月加减拒绝、没时钟如实说）+ 连续折扣
+dates|sh tests/dates.sh
+# 目标（统计边的命中率、砍死边）：::edges stats/dead/prune 的统计口径与安全闸
+edges|sh tests/edges.sh
+# 目标（蒸馏举一反三）：谓词代数——教一条事实，按属性往回收/往深推/走同义组；
+# 同一份题开表/关表（AIP_NOALG=1）跑两遍，增益必须只在开表时出现（消融判据）
+generalize|sh tests/generalize.sh
+# 目标（蒸馏骨架）：教师只给说法变体，学生用 [lead]/[tail] 学；判据＝基线有缺口、
+# 学后全过、**没教过的问句**套同一包装也全过（举一反三）。不联网。
+distilllearn|sh tests/distilllearn.sh
+# 目标（拿工具问本地部署的 AI）：::tool 默认关 / 问得到 / 标出处 / 请求体是 JSON /
+# 记账 / 不进图 / 失败照实说。用 tools/fake_openai.py，不联网。
+tool|sh tests/tool.sh
+# 目标（读英语）：ASCII 词经 [syn] 映射到中文节点，英文问 vs 中文问答复一致；
+# 没教过的英文词必须老实说不知道（不瞎认）。
+english|sh tests/english.sh
+# 目标（网页搜索）：::web parse 罐头 HTML 抽标题/链接/摘要、实体解码、空页面照实说、
+# 联网关着必须拒绝。不联网（live 只做手工记录，见 docs/web.md）。
+web|sh tests/web.sh

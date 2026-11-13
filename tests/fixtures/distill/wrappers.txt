@@ -1,0 +1,12 @@
+# 教师生成的说法变体（骨架），由 `tools/distill_wrappers.py` 产出；一行一条
+# 本文件是**判据用的数据**：`tests/distilllearn.sh` 把它并入沙箱的 patterns.txt，
+# 再看"包装前答不出、包装后答得出、没教过的问句也答得出"。
+[lead] 劳驾
+[lead] 请问
+[lead] 麻烦问一下
+[lead] 想请教
+[lead] 打扰一下
+[tail] 谢谢
+[tail] 多谢
+[tail] 拜托了
+[tail] 不胜感激

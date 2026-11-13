@@ -1,0 +1,2110 @@
+#include <math.h>   /* log()：独占判定用似然比 */
+
+/* ---- 「独占」判定的三个常量 ----
+ * 判「一个主语最多一个宾语」用的是**似然比**，不是「多久算多」这种手写阈值：
+ *   REL_EXCL_NOISE 独占关系里允许多少噪声（数据里混进一条错的多宾语事实）
+ *   REL_EXCL_ODDS  判独占要求的赔率（10 = 10:1 才敢说独占）
+ *   REL_EXCL_MIN_SUBJ 少于这个主语数就不表态（保留 AI_RELS 里的声明值）
+ * 这样样本少的时候自然判不出来，样本够且一边倒的时候才改口 ——
+ * 而且改口方向可以是**推翻声明**（数据说「属于」多值，就按数据来）。
+ * 证据与似然比留在 ai->rel_excl_single/multi/llr，`::excl` 全部打出来。 */
+#define REL_EXCL_NOISE     0.10
+#define REL_EXCL_ODDS      10.0
+#define REL_EXCL_MIN_SUBJ  2
+
+/* rel.h — 语义关系层（L2）：完整逻辑链
+ *
+ * 上一版只有「传递」和「继承」两条规则，并且靠**闭合世界假设**硬答「不对」——
+ * 那是**不健全**的推理：「知识库里没有」和「事实为假」是两件事。
+ * 这一版补成一套能站住的推理：
+ *
+ *   ── 真值三态 ──────────────────────────────────────────────
+ *     +1 真   —— 推得出肯定结论（直接 / 传递 / 继承 / 对称 / 逆关系）
+ *     -1 假   —— 推得出**否定**结论（显式否定事实 `猫 不 会 飞`，或继承下来的否定）
+ *      0 未知 —— 什么都没有。这时**不许说「不对」**，只能说不知道，
+ *                或者给一个**明确标注为推测**的类比答案。
+ *
+ *   ── 规则（写全了，就这五条）──────────────────────────────
+ *   R0 直接   A --R--> B
+ *   R1 传递   A R C, C R B        （R 声明 trans）
+ *   R2 继承   A 属于 C, C R B      （R 声明 inherit；否定也能继承）
+ *   R3 对称   B R A                （R 声明 sym）
+ *   R4 逆关系 B inv(R) A           （R 声明 inv）
+ *   R5 类比   A 与 S 很像，S R B   （**只在前四条都失败时**试，结论标为推测）
+ *
+ *   R5 是这一版才有的：它把 L3 学出来的 `emb` 和符号规则接上了 ——
+ *   知识库里查不到时，找「最像的、并且知道这件事」的那个词借答案。
+ *   这是非单调的默认推理，所以 pf->guessed 会被置上，答复里必须写明是猜的。
+ *
+ *   ── 谓词表是开放的 ────────────────────────────────────────
+ *   清单之外谓语（「想念」「养」…）会登记成**动态关系**（id 从 8 起，写进模型），
+ *   所以系统不被 7 个动词框死。动态关系只支持肯定，不支持否定与传递 ——
+ *   老实记在文档的局限里。
+ *
+ * 依赖：ai.h（AI / 符号节点 / emb_cosine / cot_push）与 frame.h 的 fr_is_func。
+ */
+#ifndef REL_H
+#define REL_H
+
+/* 注意：**不**在这里 include ai.h。本文件只由 ai.h 在末尾包含，
+ * 而 ai.h → rel.h → derive.h 的顺序是刻意的（derive 要用 rel 的 Proof）。
+ * 早先 rel.h 里写了 #include "ai.h"，形成一个环：编译 rel.h 时会绕回 ai.h，
+ * 于是 derive.h 在 Proof 定义之前就被拉进来了（unknown type name 'Proof'）。 */
+#include <stdio.h>
+#include <string.h>
+
+/* ---------------------------------------------------------------- 关系清单 */
+
+/* 关系 id 常量与 REL_BIT/REL_BOOST 都定义在 **ai.h** 里 ——
+ * AI 结构要用它们给运行时的独占表开数组，所以必须更早可见。 */
+
+typedef struct {
+    const char *name;    /* 关系词（用户可能这样写） */
+    const char *neg;     /* 否定形式，答复时用 */
+    uint8_t     id;      /* 关系 id；同义写法共用 id */
+    uint8_t     trans;   /* 可传递：A R C, C R B ⟹ A R B */
+    uint8_t     inherit; /* 可沿「属于」继承：A 属于 C, C R B ⟹ A R B */
+    uint8_t     sym;     /* 对称：A R B ⟺ B R A */
+    uint8_t     inv;     /* 逆关系 id（0 = 无）：B inv A ⟹ A R B */
+    /* 独占（函数式）：一个主语只能有一个宾语。
+     * 有了它才能**健全地**推出否定：「猫 属于 动物」+「动物/鸟 互不包含」
+     * ⟹ 「猫 不属于 鸟」。这是「完备性」那条局限的正面解法 ——
+     * 不是靠「知识库里没有就算假」（那是闭合世界，是一个**假设**），
+     * 而是靠一条**声明出来的公理**。 */
+    uint8_t     excl;
+    /* 「做这件事需要前提」：R9 缺前提 → 否定能力 用的就是这一位。
+     * 声明在**表里**而不是在求解器里写死 `rid == REL_CAN` ——
+     * 哪些关系有前提是**知识**，不是控制流。实测只有「会」有这回事。
+     * 注意字段顺序要和表的列序一致（…逆、独占、前提）：
+     * 顺序错了不会编译报错，只会让值悄悄串位（这个坑刚踩过）。 */
+    uint8_t     prereq;
+} RelDef;
+
+static const RelDef AI_RELS[] = {
+    /* 名字    否定         id           传 继 对 逆          独占 前提 */
+    { "属于", "不 属于",   REL_IS_A,     1, 0, 0, REL_CONTAIN, 1, 0 },
+    { "是",   "不 是",     REL_IS_A,     1, 0, 0, REL_CONTAIN, 1, 0 },
+    { "包含", "不 包含",   REL_CONTAIN,  0, 0, 0, REL_IS_A,    0, 0 },
+    { "有",   "没有",      REL_HAS,      0, 1, 0, 0,          0, 0 },
+    { "会",   "不 会",     REL_CAN,      0, 1, 0, 0,          0, 1 },
+    { "怕",   "不 怕",     REL_FEAR,     0, 0, 1, 0,          0, 0 },
+    { "喜欢", "不 喜欢",   REL_LIKE,     0, 0, 0, 0,          0, 0 },
+    { "爱",   "不 爱",     REL_LIKE,     0, 0, 0, 0,          0, 0 },
+    { "吃",   "不 吃",     REL_EAT,      0, 0, 0, 0,          0, 0 },
+    { "在",   "不 在",     REL_AT,       0, 0, 0, 0,          1, 0 },
+    /* 「需要」= 前提。它是 R9「缺前提 → 否定能力」用的关系：
+     *   唱歌 需要 声带（前提），猫 没有 灵活的声带 ⟹ 猫 不 会 唱歌。
+     * 声明成不可传递、不继承、不对称、无逆、不独占（一件事可以有很多前提）。 */
+    { "需要", "不 需要",   REL_NEED,     0, 0, 0, 0,          0, 0 },
+    { NULL, NULL, 0, 0, 0, 0, 0, 0, 0 }
+};
+
+static inline const RelDef *rel_by_name(const char *w) {
+    if (!w) return NULL;
+    for (size_t i = 0; AI_RELS[i].name; ++i)
+        if (strcmp(AI_RELS[i].name, w) == 0) return &AI_RELS[i];
+    return NULL;
+}
+static inline const RelDef *rel_by_id(uint8_t id) {
+    for (size_t i = 0; AI_RELS[i].name; ++i)
+        if (AI_RELS[i].id == id) return &AI_RELS[i];
+    return NULL;
+}
+
+/* ------------------------------------------------- 动态关系（开放谓词表） */
+
+/* 清单之外的谓语登记成动态关系，id 从 8 起。返回 id（0 = 登记不了）。 */
+static inline uint8_t rel_dyn_intern(AI *ai, const char *w) {
+    if (!ai || !w || !*w) return 0;
+    for (size_t i = 0; i < ai->dynrel_n; ++i)
+        if (ai->dynrel_name[i] && strcmp(ai->dynrel_name[i], w) == 0)
+            return (uint8_t)(REL_DYN_BASE + i);
+    if (ai->dynrel_n >= AI_MAX_DYNREL) return 0;
+    size_t n = strlen(w) + 1;
+    char *c = (char *)malloc(n);
+    if (!c) return 0;
+    memcpy(c, w, n);
+    ai->dynrel_name[ai->dynrel_n] = c;
+    ai->dynrel_n++;
+    return (uint8_t)(REL_DYN_BASE + ai->dynrel_n - 1);
+}
+/* §6.162 **只查**（不登记）：这个谓语已经是个动态关系了吗？有就返回它的 id。
+ * 以前 `rel_id_of(..., allow_new=0)` 直接 return 0，于是"能教不能问"
+ * （`::teach 月亮 喵 鱼` 学会，`月亮 喵 鱼 吗` 却答"不太懂"）。 */
+static inline uint8_t rel_dyn_find(const AI *ai, const char *w) {
+    if (!ai || !w || !*w) return 0;
+    for (size_t i = 0; i < ai->dynrel_n; ++i)
+        if (ai->dynrel_name[i] && strcmp(ai->dynrel_name[i], w) == 0)
+            return (uint8_t)(REL_DYN_BASE + i);
+    return 0;
+}
+static inline const char *rel_dyn_name(const AI *ai, uint8_t id) {
+    if (!ai || id < REL_DYN_BASE) return NULL;
+    size_t i = (size_t)(id - REL_DYN_BASE);
+    if (i >= ai->dynrel_n) return NULL;
+    return ai->dynrel_name[i];
+}
+/* 这个谓语认识吗？
+ *
+ * allow_new=1 才**登记**新的动态关系；allow_new=0 只查。
+ * 这个参数是必须的：解析器如果在「只是问一句」的时候也去登记，
+ * 那么随便一句 `你 觉得 天气 怎么样` 里的「觉得」都会被登记成动态关系，
+ * 表被垃圾填满、还写进模型（实测的泄漏）。只有**用户明确在陈述事实**
+ * （教它一条新关系）时才该登记。 */
+/* **谓词别名表**（一处）：常见的同义/近义说法归到**核心关系**上。
+ *
+ * 为什么要它：`我 害怕 猫` 与 `我 怕 猫` 说的是同一件事，但前者会去登记一个
+ * **动态关系** → 和后者永远对不上（"他说的"和"我知道的"也一样对不上）。
+ * 纪律：**只收语义确实一致的**，拿不准的一律不写（宁可对不上，也不要错并）。
+ * `爱` 已经在核心表里（= 喜欢），所以不列。 */
+typedef struct { const char *word; uint8_t rid; } RelAlias;
+
+/* §6.541 **别名表下沉**：`[alias] 词=规范关系名`（如 `拥有=有`）。
+ * 关系 **id 仍由代码的枚举定**（存档里存的是 id，不能挪），进数据的只是"哪些词算别名、归到哪个规范名"。
+ * 存储放这里（rel.h），因为 `rel_alias_id` 是**唯一**判据，不能有两份实现。 */
+#define REL_ALIAS_MAX 48
+#define REL_ALIAS_LEN 24
+/* ⚠ 这些数组只被 `agent.h` 的加载器写、被 `rel_alias_id` 读；有些 C 级探针（`tools/microtest.c` 等）
+ * 只 include 到 `rel.h`、不加载数据 ⇒ 会撞 `-Wunused-variable`（`-Werror` 下编译不过）。
+ * 所以显式标 unused —— 不是"没人用"，是"当前这层看不到用它的人"。 */
+#if defined(__GNUC__)
+#define REL_MAYBE_UNUSED __attribute__((unused))
+#else
+#define REL_MAYBE_UNUSED
+#endif
+static char g_alias_w[REL_ALIAS_MAX][REL_ALIAS_LEN] REL_MAYBE_UNUSED;
+static char g_alias_rel[REL_ALIAS_MAX][REL_ALIAS_LEN] REL_MAYBE_UNUSED;
+static size_t g_alias_n REL_MAYBE_UNUSED, g_alias_lines REL_MAYBE_UNUSED;
+static int g_alias_data REL_MAYBE_UNUSED;
+
+static const RelAlias REL_ALIASES[] = {
+    /* ⚠ 有意**没有**收 `害怕`（尽管语料里 30 次、语义就是「怕」）：
+     *   `frames.txt` 里有一条 `[帧:害怕X吗]`（问法就是「你 害怕 <X> 吗」），
+     *   把「害怕」归到核心关系「怕」之后，**关系层会先答**，帧层那条兜底就再也用不上了
+     *   —— 实测被 `tests/hypo_frames.sh` 当场抓住（假设下的帧/检索路径不再被走到）。
+     *   这是"归属该给谁"的设计裁量，不是能顺手改的事：先按现状（帧层 owns 害怕），
+     *   把冲突记在这里与 docs/对照-lingshu与五个局限.md 里。 */
+    /* ⚠ 别名**只对分词器不切开的词有效**：多字词必须先是词表里的符号节点，
+     *   否则会被切成单字（实测「喜爱」被切成「喜」+「爱」→ 别名永远看不到）。
+     *   所以下面几行现在只有 `拥有` 是**真的可达**的（它是模型里的符号节点），
+     *   其余先留着 —— 等它们进了词表就自动生效，不用再改代码。 */
+    { "惧怕", REL_FEAR },
+    { "喜爱", REL_LIKE },
+    { "喜好", REL_LIKE },
+    { "拥有", REL_HAS },    /* 模型里的符号节点（实测 3 条边）—— 当前唯一可达的别名 */
+    { "具有", REL_HAS },
+    { NULL, 0 }
+};
+
+static inline uint8_t rel_alias_id(const char *w) {
+    if (!w) return 0;
+    if (g_alias_data) {   /* §6.541 数据接管：规范名 → id 用 rel_by_name 现解 */
+        for (size_t i = 0; i < g_alias_n; ++i) {
+            if (strcmp(g_alias_w[i], w) != 0) continue;
+            const RelDef *rd = rel_by_name(g_alias_rel[i]);
+            if (rd) return rd->id;
+            return 0;
+        }
+        return 0;
+    }
+    for (size_t i = 0; REL_ALIASES[i].word; ++i)
+        if (!strcmp(REL_ALIASES[i].word, w)) return REL_ALIASES[i].rid;
+    return 0;
+}
+
+static inline uint8_t rel_id_of(AI *ai, const char *w, int allow_new) {
+    /* §6.161 **自然说法**（默认关，`AIP_RELNAT=1`）：`能`/`可以` 归到核心关系「会」。
+     * 为什么需要：实测 `鸟 能 飞` 会被当成**动态谓语「能」**记下来（陈述侧 allow_new=1），
+     * 而 `鸟 能 飞 吗` 查不到（查询侧 allow_new=0 ⇒ `rel_id_of("能")=0`）——
+     * 同一句话**说得进、问不出**。归到「会」之后两边说的是同一件事。
+     * 默认关是因为它会改行为：`你 能 来 吗` 这种三词日常句也会被关系层接（可能答非所问）。 */
+    if (ai && ai->rel_nat && w) {
+        if (!strcmp(w, "能") || !strcmp(w, "可以")) return REL_CAN;
+    }
+    const RelDef *rd = rel_by_name(w);
+    if (rd) return rd->id;
+    uint8_t al = rel_alias_id(w);      /* 别名 → 核心关系（**唯一**一张表） */
+    if (al) return al;
+    /* §6.162 修：`allow_new=0` 的意思是**只查**，不是"不认识" ——
+     * 已经登记过的动态谓语（用户教过的新说法）也要查到，否则"教得进、问不出"。 */
+    { uint8_t d = rel_dyn_find(ai, w); if (d) return d; }
+    if (!allow_new || !ai) return 0;
+    return rel_dyn_intern(ai, w);
+}
+static inline const char *rel_name_of(const AI *ai, uint8_t id) {
+    const RelDef *rd = rel_by_id(id);
+    if (rd) return rd->name;
+    return rel_dyn_name(ai, id);
+}
+static inline const char *rel_neg_of(const AI *ai, uint8_t id) {
+    (void)ai;
+    const RelDef *rd = rel_by_id(id);
+    if (rd) return rd->neg;
+    return "不";      /* 动态关系没有专门的否定形式，用「不」兜 */
+}
+
+/* ===================== 谓词代数（数据的 R1/R3/R4，不是硬编码的） =====================
+ *
+ * 问题（本轮实测）：R1 传递 / R3 对称 / R4 逆关系三条规则本来就有，可**属性**写死在
+ * `AI_RELS[]` 里，只覆盖十来个核心关系。`relations.txt` 教进来的动态谓语
+ * （买/卖、教/学…）一条属性都没有 ⇒ 教了 `甲 卖 乙`，问 `乙 买 甲 吗` 只会掉兜底
+ * （实测「这个我 不 太 懂」）。这不是知识不够，是**属性不是数据**。
+ *
+ * 现在属性进 `relprops.txt`，一行一条、可审计、可蒸馏：
+ *     prop 包含 trans      可传递：A 包含 B, B 包含 C ⟹ A 包含 C
+ *     prop 认识 sym        对称：A 认识 B ⟺ B 认识 A
+ *     prop 哺乳动物 inherit 沿「属于」继承（核心关系已有，数据可加）
+ *     prop 甲 inv 乙       逆关系（**对称**：写一遍两向都成立）
+ *     syn  一样 相同       谓词同义 ⇒ **代数同**（举一反三的第一层：一条属性，整个同义组都有）
+ *
+ * 纪律：
+ *   · 属性是知识，不是控制流 —— 蒸馏/手写都落文件，不改 C；
+ *   · `AIP_NOALG=1` 整张表关掉（消融判据：增益必须只在开表时出现）；
+ *   · 同义只走**一跳**（A~B 且 B~C 不传递），一条错边别把整片谓词染上属性。
+ *
+ * ⚠ 这些数组只被真正装载/求解的编译单元用；tools 下的小探针只 include 到 rel.h 时
+ *   会撞 `-Wunused-variable`（`-Werror` 下编不过）⇒ 显式标 unused（和别名表同处理）。
+ */
+#define RELPROP_MAX 128
+#define RELPROP_LEN 24
+#define RELSYN_MAX 128
+typedef struct {
+    char name[RELPROP_LEN];
+    char inv[RELPROP_LEN];      /* 逆谓词名（空 = 无） */
+    uint8_t trans, sym, inherit;
+} RelProp;
+typedef struct { char a[RELPROP_LEN], b[RELPROP_LEN]; } RelSynPair;
+static RelProp g_relprop[RELPROP_MAX] REL_MAYBE_UNUSED;
+static size_t g_relprop_n REL_MAYBE_UNUSED;
+static RelSynPair g_relsyn[RELSYN_MAX] REL_MAYBE_UNUSED;
+static size_t g_relsyn_n REL_MAYBE_UNUSED;
+/* 装载状态（**只装一次**，装完就只读）：`tests/conc_tsan.sh` 会在多个线程里各自
+ * 装一遍 AI ⇒ 原来的"每次 load 都清表再写"被 ThreadSanitizer 逮到两处数据竞争
+ * （`g_relprop_n`/`g_relsyn_n`）。属性是**全局只读数据**：第一个线程装，其余等它装完。 */
+static int g_relprop_state REL_MAYBE_UNUSED;    /* 0 未装 / 1 装载中 / 2 就绪 */
+
+static inline RelProp *relprop_get(const char *name) {
+    if (!name || !*name) return NULL;
+    for (size_t i = 0; i < g_relprop_n; ++i)
+        if (!strcmp(g_relprop[i].name, name)) return &g_relprop[i];
+    return NULL;
+}
+static inline RelProp *relprop_new(const char *name) {
+    RelProp *p = relprop_get(name);
+    if (p) return p;
+    if (g_relprop_n >= RELPROP_MAX) return NULL;
+    p = &g_relprop[g_relprop_n++];
+    memset(p, 0, sizeof *p);
+    snprintf(p->name, sizeof p->name, "%s", name);
+    return p;
+}
+/* 读 `relprops.txt`。返回装了几条（0 = 没文件/被关/空）。幂等：每次读先清表。 */
+static inline size_t relprops_load(AI *ai, const char *path) {
+    (void)ai;
+    int st = __atomic_load_n(&g_relprop_state, __ATOMIC_ACQUIRE);
+    if (st == 2) return g_relprop_n;                 /* 装过了：属性全局只读，不重装 */
+    if (__atomic_exchange_n(&g_relprop_state, 1, __ATOMIC_ACQ_REL) != 0) {
+        while (__atomic_load_n(&g_relprop_state, __ATOMIC_ACQUIRE) != 2) { /* 等第一个装完 */ }
+        return g_relprop_n;
+    }
+    g_relprop_n = 0;
+    g_relsyn_n = 0;
+    const char *off = getenv("AIP_NOALG");
+    if (off && off[0] == '1') {
+        printf("[谓词代数] AIP_NOALG=1 ⇒ 表不装载（消融模式）\n");
+        __atomic_store_n(&g_relprop_state, 2, __ATOMIC_RELEASE);
+        return 0;
+    }
+    FILE *f = path ? fopen(path, "r") : NULL;
+    if (!f) { __atomic_store_n(&g_relprop_state, 2, __ATOMIC_RELEASE); return 0; }
+    char line[512];
+    size_t bad = 0;
+    while (fgets(line, sizeof line, f)) {
+        size_t n = strlen(line);
+        while (n && (line[n - 1] == '\n' || line[n - 1] == '\r' || line[n - 1] == ' ')) line[--n] = 0;
+        char *p = line;
+        while (*p == ' ' || *p == '\t') p++;
+        if (!*p || *p == '#') continue;
+        {   /* 行内注释：`prop 包含 trans   # [代码] …` —— 出处写在条目旁边最不容易过期 */
+            char *h = strchr(p, '#');
+            if (h) { while (h > p && (h[-1] == ' ' || h[-1] == '\t')) h--; *h = 0; }
+        }
+        if (!*p) continue;
+        char w[4][RELPROP_LEN];
+        int nw = 0;
+        char *q = p;
+        while (*q && nw < 4) {
+            while (*q == ' ' || *q == '\t') q++;
+            if (!*q) break;
+            char *s = q;
+            while (*q && *q != ' ' && *q != '\t') q++;
+            size_t len = (size_t)(q - s);
+            if (len >= RELPROP_LEN) len = RELPROP_LEN - 1;
+            memcpy(w[nw], s, len);
+            w[nw][len] = 0;
+            nw++;
+        }
+        if (!strcmp(w[0], "prop") && nw == 3) {
+            RelProp *rp = relprop_new(w[1]);
+            if (!rp) { bad++; continue; }
+            if (!strcmp(w[2], "trans"))        rp->trans = 1;
+            else if (!strcmp(w[2], "sym"))     rp->sym = 1;
+            else if (!strcmp(w[2], "inherit")) rp->inherit = 1;
+            else bad++;
+        } else if (!strcmp(w[0], "prop") && nw == 4 && !strcmp(w[2], "inv")) {
+            RelProp *rp = relprop_new(w[1]);
+            if (!rp) { bad++; continue; }
+            snprintf(rp->inv, sizeof rp->inv, "%s", w[3]);
+        } else if (!strcmp(w[0], "syn") && nw == 3) {
+            if (g_relsyn_n >= RELSYN_MAX) { bad++; continue; }
+            snprintf(g_relsyn[g_relsyn_n].a, RELPROP_LEN, "%s", w[1]);
+            snprintf(g_relsyn[g_relsyn_n].b, RELPROP_LEN, "%s", w[2]);
+            g_relsyn_n++;
+        } else bad++;
+    }
+    fclose(f);
+    if (bad) printf("[谓词代数] %s: %zu 行不认识（已跳过，格式见文件头）\n", path, bad);
+    __atomic_store_n(&g_relprop_state, 2, __ATOMIC_RELEASE);
+    return g_relprop_n;
+}
+/* 某个关系**实际生效**的代数：核心关系的声明 ∪ 数据表 ∪ 同义组（一跳）。
+ * 返回 1 = 有任何属性（调用方据此决定要不要走规则）。 */
+typedef struct { uint8_t trans, sym, inherit; char inv[RELPROP_LEN]; } RelPropView;
+static inline int relprops_of(const AI *ai, uint8_t rid, RelPropView *out) {
+    if (!out) return 0;
+    memset(out, 0, sizeof *out);
+    const RelDef *rd = rel_by_id(rid);
+    if (rd) {
+        out->trans = rd->trans;
+        out->sym = rd->sym;
+        out->inherit = rd->inherit;
+        if (rd->inv) {
+            const char *nm = rel_name_of(ai, rd->inv);
+            if (nm) snprintf(out->inv, sizeof out->inv, "%s", nm);
+        }
+    }
+    if (__atomic_load_n(&g_relprop_state, __ATOMIC_ACQUIRE) != 2) return rd != NULL;
+    const char *nm = rel_name_of(ai, rid);
+    if (!nm || !*nm) return rd != NULL;
+    const RelProp *p = relprop_get(nm);
+    if (!p) {
+        /* 同义泛化：谓词同义 ⇒ 代数同。**一跳**，且只认表里写明的。 */
+        for (size_t i = 0; i < g_relsyn_n; ++i) {
+            const char *other = NULL;
+            if (!strcmp(g_relsyn[i].a, nm)) other = g_relsyn[i].b;
+            else if (!strcmp(g_relsyn[i].b, nm)) other = g_relsyn[i].a;
+            if (other && (p = relprop_get(other)) != NULL) break;
+        }
+    }
+    if (p) {
+        out->trans |= p->trans;
+        out->sym |= p->sym;
+        out->inherit |= p->inherit;
+        if (p->inv[0] && !out->inv[0]) snprintf(out->inv, sizeof out->inv, "%s", p->inv);
+    }
+    /* 逆关系是**对称的**：`卖 inv 买` 写一遍，`买 inv 卖` 自动成立。
+     * 不这么做，蒸馏表就得写两遍 —— 两遍就会有写漏/写歪的那天。 */
+    if (!out->inv[0]) {
+        for (size_t i = 0; i < g_relprop_n; ++i)
+            if (g_relprop[i].inv[0] && !strcmp(g_relprop[i].inv, nm)) {
+                snprintf(out->inv, sizeof out->inv, "%s", g_relprop[i].name);
+                break;
+            }
+    }
+    return (rd != NULL) || (p != NULL);
+}
+static inline size_t relprop_count(void) { return g_relprop_n; }
+static inline const RelProp *relprop_at(size_t i) { return i < g_relprop_n ? &g_relprop[i] : NULL; }
+static inline size_t relsyn_count(void) { return g_relsyn_n; }
+static inline const RelSynPair *relsyn_at(size_t i) { return i < g_relsyn_n ? &g_relsyn[i] : NULL; }
+
+
+/* 否定形式的**两种写法**（同一个判据，两处调用）。
+ *
+ * 关系表里声明的是一种写法（`不 会`），可**实际输入**可能是另一种：分词器把最常见的
+ * 「不会」切成**一个** 符号节点（`不喜欢`/`不是` 同理），而 `不属于`/`不能`/`不敢` 却是两词。
+ * 于是同一份声明得两种都认 —— 判据只写这一处：**把声明里的空格去掉再比**。
+ *
+ * ⚠ 这不是新语义：声明还是那一条（`AI_RELS[]` 里只有一份），这里只是"同一个否定词的两种切法"。
+ * 返回 1 = `w` 就是某个关系的**合写否定形式**，并把关系 id 写进 `*out`。
+ *
+ * 为什么非修不可（2026-10-10 实测，audit §6.68 三 / §6.69）：修之前
+ *   `猫 不会 飞 吗` / `甲 说 猫 不会 游泳` / `我 不喜欢 猫 吗` 全掉进**降级答复**
+ *   （"这个我 不 太 懂"），而两词写法「不 会」一切正常 —— 同一个意思两种写法两种待遇。 */
+/* **情态说法的归一**（第 6 条尾巴：合写否定修好之后，`不能/没法` 这类还掉降级答复）。
+ *
+ * `不能` 不是任何关系的"否定形式"，而是**情态写法**（能不能 ≈ 会不会做得到）。
+ * 所以它不走 `rel_merged_neg_id`（那是"同一条声明的两种切法"），走这张**小的说法表**：
+ * 只把最常用的几个情态说法归到 `(关系, 否定)` 上 —— 表是**数据**，加一行就多认一个说法。
+ * ⚠ 归一是"认说法"，不是"新语义"：判据仍然是那条关系边。 */
+typedef struct { const char *w; const char *rel; int neg; } RelModalRow;
+static const RelModalRow REL_MODALS[] = {
+    { "不能",  "会",   1 },
+    { "没法",  "会",   1 },
+    { "不会",  "会",   1 },     /* 合写（rel_merged_neg_id 已经认，这里只是让表自洽） */
+    { "不敢",  "怕",   0 },     /* "不敢"更接近"怕"：先按**肯定**的怕收（宁可弱，不乱否） */
+    { NULL, NULL, 0 }
+};
+static inline const RelModalRow *rel_modal_of(const char *w) {
+    if (!w) return NULL;
+    for (size_t i = 0; REL_MODALS[i].w; ++i)
+        if (strcmp(REL_MODALS[i].w, w) == 0) return &REL_MODALS[i];
+    return NULL;
+}
+
+static inline int rel_merged_neg_id(const char *w, uint8_t *out) {
+    if (out) *out = 0;
+    if (!w || !w[0]) return 0;
+    char sq[24];
+    for (size_t i = 0; AI_RELS[i].name; ++i) {
+        const char *neg = AI_RELS[i].neg;
+        if (!neg) continue;
+        size_t k = 0;
+        for (const char *q = neg; *q && k + 1 < sizeof sq; ++q)
+            if (*q != ' ') sq[k++] = *q;
+        sq[k] = 0;
+        if (k && strcmp(w, sq) == 0) {
+            if (out) *out = AI_RELS[i].id;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/* 把关系清单里的词**先 intern 进词池**。
+ *
+ * 不这么做的话，`包含` 这种词从没作为符号节点存在过（AI_RELS 只是编译期表），
+ * 切词器就会把 `动物 包含 猫 吗` 切成 动物/包/含/猫/吗 —— 于是关系解析
+ * 在第 1 个词位上看到「包」，整句都认不出来（实测）。
+ * 让它们成为真词，切词/帧/检索全都会顺带受益。 */
+static inline void rel_names_intern(AI *ai) {
+    if (!ai || !ai->pool) return;
+    for (size_t i = 0; AI_RELS[i].name; ++i)
+        pool_token_intern(ai->pool, AI_RELS[i].name);
+}
+
+/* ---------------------------------------------------------------- 静态知识 */
+
+/* 存盘里是不是已经有一条**观测**说了反话（缓存不算）？
+ * 用在 relations_load 上：模型文件是**更晚**的状态（用户教过、存过盘），
+ * relations.txt 是每次启动重读的基准知识 —— 拿基准去改用户教过的，等于
+ * 「重启就把用户教的忘了」。所以装载时看到反面的**观测**就跳过这一行。
+ * 改名/挪位置注意：rel_direct_* 这几个直查函数定义在下面，所以这里直接扫位。 */
+static inline int rel_obs_opposite(const Token *a, uint8_t rid, const Token *b, int neg) {
+    if (!a || !b || rid == 0 || rid >= REL_DYN_BASE) return 0;
+    uint16_t bit = REL_BIT(rid);
+    for (size_t i = 0; i < a->count; ++i) {
+        const AssocEntry *e = &token_assocs_ro(a)[i];
+        if (e->main != b || edge_is_causal_guess(e)) continue;
+        if (e->role == ASSOC_ROLE_DERIVED) continue;      /* 缓存不是观测，该被推翻 */
+        if (neg ? (e->rel & bit) : (e->nrel & bit)) return 1;
+    }
+    return 0;
+}
+
+/* 一行一条事实：
+ *   <主语> <关系词> <宾语>          肯定
+ *   <主语> 不 <关系词> <宾语>        否定（三态里的「假」）
+ * '#' 开头是注释。返回读到的事实条数。 */
+static inline size_t relations_load(AI *ai, const char *path) {
+    if (!ai || !path) return 0;
+    FILE *f = fopen(path, "r");
+    if (!f) return 0;
+    char line[512];
+    size_t learned = 0;
+    while (fgets(line, sizeof line, f)) {
+        size_t l = strlen(line);
+        while (l && (line[l-1] == '\n' || line[l-1] == '\r')) line[--l] = 0;
+        char *p = line;
+        while (*p == ' ' || *p == '\t') p++;
+        if (!*p || *p == '#') continue;
+        char *w[4] = {NULL, NULL, NULL, NULL};
+        size_t nw = 0;
+        while (*p && nw < 4) {
+            while (*p == ' ' || *p == '\t') p++;
+            if (!*p) break;
+            w[nw++] = p;
+            while (*p && *p != ' ' && *p != '\t') p++;
+            if (*p) *p++ = 0;
+        }
+        int neg = 0;
+        const char *relw = NULL, *sub = NULL, *obj = NULL;
+        if (nw == 3) { sub = w[0]; relw = w[1]; obj = w[2]; }
+        else if (nw == 4 && strcmp(w[1], "不") == 0) {
+            neg = 1; sub = w[0]; relw = w[2]; obj = w[3];
+        } else continue;
+        /* 「没有」是「有」的否定形式，而且它是一个词（不是「不 有」两段）——
+         * 不在这里认它，「猫 没有 声带」这种前提事实就整行被丢掉，
+         * 缺前提推理(R9)永远缺一半前提。 */
+        int norel = 0;
+        if (!neg && (strcmp(relw, "没有") == 0 || strcmp(relw, "没") == 0)) {
+            relw = "有"; neg = 1; norel = 1;
+        }
+        (void)norel;
+        /* 合写否定（`不会`/`不喜欢`/`不是`）**必须先查**：`rel_id_of(..., allow_new=1)`
+         * 会把「不会」当场登记成一个**动态谓语**（实测：那样边是建了，可它是动态关系、
+         * 不是「会」的否定边 ⇒ 断言「不 会」查不到）。与 `rel_parse` 同一份判据。 */
+        uint8_t rid = 0;
+        {
+            uint8_t mid = 0;
+            if (!neg && rel_merged_neg_id(relw, &mid)) { rid = mid; neg = 1; }
+            else rid = rel_id_of(ai, relw, 1);   /* 装载知识：允许登记新谓语 */
+        }
+        if (!rid) continue;
+        Token *a = pool_token_intern(ai->pool, sub);
+        Token *b = pool_token_intern(ai->pool, obj);
+        if (!a || !b) continue;
+        if (rid >= REL_DYN_BASE) {                   /* 动态关系：否定走 `nrel` 第 15 位（§6.80） */
+            if (token_tag_dyn_neg(a, b, (uint8_t)(rid - REL_DYN_BASE + 1), neg,
+                                      REL_BOOST) == 0) learned++;
+            continue;
+        }
+        /* 存盘里已有观测说了反话 → 这条基准知识让路（别把用户教过的盖回默认值）。 */
+        if (rel_obs_opposite(a, rid, b, neg)) continue;
+        int rc = neg ? token_tag_nrel(a, b, rid, REL_BOOST)
+                     : token_tag_rel(a, b, rid, REL_BOOST);
+        if (rc == 0) learned++;
+        /* **来源监控**：这一条是**显式教给它的基准知识**（不是它自己泡出来的经验）。
+         * 每次装载都重打一遍，所以是确定性的；存档格式没动（role 一直是序列化字节）。 */
+        token_mark_innate(a, b);
+    }
+    fclose(f);
+    return learned;
+}
+
+/* ------------------------------------------------- 独占：从数据里量出来 */
+/*
+ * 「独占」（函数式：一个主语只能有一个宾语）原来是我手写进 AI_RELS 的 ——
+ * 那是**声明**，不是知识。这里改成从图里量：
+ *
+ *   对每个核心关系 r，数一数有多少主语「有 ≥2 个不同的宾语」。
+ *   如果绝大多数主语只有一个宾语（≥80%），就判定 r 独占。
+ *
+ * 只在样本够（≥5 个主语）时才改判定，样本不足就保留声明值 ——
+ * 数据少的时候乱下结论比不结论更糟。
+ *
+ * 这一步让「独占公理」变成**经验结论**，同时也把「哪些关系能用来推否定」
+ * 这件事和知识库本身对齐了。
+ */
+static inline void rel_excl_build(AI *ai) {
+    if (!ai || !ai->pool) return;
+    TokenPool *p = ai->pool;
+    size_t single[REL_TABLE_MAX + 1] = {0};
+    size_t multi[REL_TABLE_MAX + 1] = {0};
+    size_t learned = 0;
+
+    for (size_t i = 0; i < p->count; ++i) {
+        Token *t = p->tokens[i];
+        if (!t->name || t->name[0] == '[') continue;
+        /* 每个关系分别数：这个主语有几个不同宾语 */
+        for (uint8_t r = 1; r <= REL_CORE_MAX; ++r) {
+            uint8_t bit = REL_BIT(r);
+            const Token *obj[64];
+            size_t no = 0;
+            for (size_t j = 0; j < t->count && no < 64; ++j) {
+                const AssocEntry *e = &token_assocs(t)[j];
+                if (!(e->rel & bit) || !e->main || e->main == t) continue;
+                /* **统计只看观测**：独占/多值是从**数据**里量出来的，
+                 * 而推理沉淀下来的缓存是自己推的 —— 拿它当数据会自我印证
+                 * （推出来的结论又会强化推出它的那条规则）。 */
+                if (e->role == ASSOC_ROLE_DERIVED) continue;
+                int dup = 0;
+                for (size_t q = 0; q < no; ++q) if (obj[q] == e->main) { dup = 1; break; }
+                if (!dup) obj[no++] = e->main;
+            }
+            if (no == 0) continue;
+            if (no == 1) single[r]++;
+            else multi[r]++;
+        }
+    }
+    /* 参照类：**看清一楚「不是独占」的关系长什么样**。
+     * 把所有关系一股脑合并起来算「多宾语率」是不对的 —— 数据集里
+     * 「属于/在」本身就是函数式的，它们会把基准拉低，于是「17 个主语都只有一个宾语」
+     * 反而不够显著，独占的判定会被自己拖垮（实测「在」被误判成多值）。
+     * 所以参照类只取**观察到了多宾语行为**的那些关系：它们才是「非独占」的样本。
+     * 一条都没有（数据太小）就退回中性的 50%。 */
+    size_t ref_s = 0, ref_m = 0;
+    for (uint8_t r = 1; r <= REL_CORE_MAX; ++r) {
+        if (multi[r] == 0) continue;
+        ref_s += single[r]; ref_m += multi[r];
+    }
+    double p1 = (ref_s + ref_m) ? (double)ref_m / (double)(ref_s + ref_m) : 0.5;
+    if (p1 < 0.05) p1 = 0.05;
+    if (p1 > 0.95) p1 = 0.95;
+    ai->rel_excl_base = (uint32_t)(p1 * 1000.0 + 0.5);
+
+    size_t evidenced = 0;
+    for (uint8_t r = 1; r <= REL_CORE_MAX; ++r) {
+        size_t tot = single[r] + multi[r];
+        ai->rel_excl_single[r] = single[r];
+        ai->rel_excl_multi [r] = multi[r];
+        ai->rel_excl_llr[r] = 0.0f;
+        if (tot < REL_EXCL_MIN_SUBJ) continue;       /* 样本不够 → 不表态 */
+        /* 两个假设的对数似然：
+         *   H_multi「多值」：每个主语独立地以 p1 的概率有多个宾语（参照类给的）
+         *   H_excl 「独占」：以 p0 的概率有多个宾语（p0 是**噪声容忍**，不是先验）
+         * llr = ll_multi - ll_excl：>0 更像「多值」，<0 更像「独占」。 */
+        double ll_m = (multi[r] ? multi[r] * log(p1) : 0.0)
+                    + (double)(tot - multi[r]) * log(1.0 - p1);
+        double ll_e = (multi[r] ? multi[r] * log(REL_EXCL_NOISE) : 0.0)
+                    + (double)(tot - multi[r]) * log(1.0 - REL_EXCL_NOISE);
+        double llr = ll_m - ll_e;
+        ai->rel_excl_llr[r] = (float)llr;
+        const double bar = log(REL_EXCL_ODDS);
+        if (llr <= -bar) {
+            /* 数据支持「独占」。声明值是 1 时这叫**印证**，是 0 时这才叫**改口**。 */
+            evidenced++;
+            if (!ai->rel_excl[r]) { ai->rel_excl[r] = 1; learned++; }
+        } else if (llr >= bar) {
+            /* 数据支持「多值」—— 方向是**推翻声明**也照推。 */
+            evidenced++;
+            if (ai->rel_excl[r]) { ai->rel_excl[r] = 0; learned++; }
+        }
+        /* 证据不够：保留 AI_RELS 里的声明值（那是先验，不是结论） */
+    }
+    ai->n_rel_excl_evidenced = evidenced;
+    ai->n_rel_excl_learned = learned;
+}
+
+/* ---------------------------------------------------------------- 推理 */
+
+/* **复核模式**：置 1 时，求解器把「推出来沉淀的」边**当成不存在**。
+ * 只给一件事用 —— 复核一条缓存现在还有没有依据（见 rel_cache_supported）：
+ * 把缓存本身排除在外再推一遍，推得出来才算有依据。
+ * 用全局开关而不是给每个递归调用加参数：求解器有一串递归（传递/继承/对称/逆），
+ * 加参数要改十几处调用点，而这个模式只在单线程、非嵌套复核时用得上
+ * （和 ai.h 的 g_walk_trace 是同一类东西）。 */
+/* §6.583 这是**调用期**的模式（进复核函数置 1、出来还原）⇒ 线程局部；
+ * 并且改成 save/restore（以前出口写死 0：嵌套复核时会把外层的 1 抹掉）。 */
+static AIP_TLS int g_rel_ignore_derived = 0;
+/* §6.125 「**允许把记忆里的猜测当输入**」的趟（默认 0 = 不许）。
+ * 只在两处打开：① 答复层"先按记忆解一遍"；② 验证器复核含记忆步的链时**独立重推**。
+ * 复核模式（g_rel_ignore_derived=1）下它一律无效 —— 猜测永远不算"干净依据"。 */
+/* §6.582 这一次求解里"猜测可见吗/走了几跳"是**每次调用的暂存** ⇒ 线程局部。 */
+static AIP_TLS int g_rel_guess_visible = 0;
+/* §6.131 **这次的求解用掉了几环"记忆里的猜测"**。
+ * 用模块级计数而不是一路传参数：求解是深递归 + 多处回溯，把计数器塞进签名要动十几个
+ * 调用点，而这里只需要"整趟求解用了几环"这一个数（同一套做法见 g_obs_revised）。
+ * 规则：**回溯失败要把计数还原**（成功那条路保留），入口清零，出口抄进 Proof。 */
+static AIP_TLS int g_rel_guess_hops = 0;
+/* §6.131 **记忆链**（默认关，`AIP_RELCHAIN=1`）：允不允许把"记忆里的猜测"当**中间跳**。
+ * 关着时只有终点那一跳能是猜测（= §6.125 的行为，逐字节不变）。 */
+/* §6.583 配置开关（`::rel chain on|off` 会改，工作线程要看见）⇒ 原子 int。 */
+AIP_ATOMIC_INT(g_rel_chain, -1);          /* -1 = 还没读过环境变量 */
+static inline int rel_chain_on(void) {
+    int v = AIP_LD(g_rel_chain);
+    if (v < 0) {
+        const char *e = getenv("AIP_RELCHAIN");
+        v = (e && *e == '1') ? 1 : 0;
+        AIP_ST(g_rel_chain, v);
+    }
+    return v;
+}
+static inline void rel_chain_set(int on) { AIP_ST(g_rel_chain, on ? 1 : 0); }
+
+/* 「把缓存排除在外再推一遍」——定义在下面（rel_solve 之后），这里先声明：
+ * ① R0 要拿它当实时闸；② 候选枚举（rel_next_cands）也要用它，
+ * 不然「经由中间词」会拿一条**没依据的缓存**当第一跳。 */
+static inline int rel_solve_ignoring_caches(AI *ai, const Token *a, uint8_t rid,
+                                            const Token *b, int want_neg);
+
+#define REL_MAX_DEPTH 5
+#define REL_MAX_PROOF 16
+#define REL_GUESS_SIM 40            /* 类比推测的相似度门槛（百分数） */
+
+typedef struct {
+    Token  *tok;      /* 走到哪个词 */
+    uint8_t rel;      /* 从上一个词走到这里用的关系 id（起点为 0） */
+    uint8_t neg;      /* 这一步是不是否定 */
+    uint8_t via;      /* 0 直接 1 传递 2 继承 3 对称 4 逆 5 类比推测 */
+    uint8_t hyp;      /* 这一跳的边是**从假设层**来的（不在图里） */
+    /* 这一跳的边是**以前推出来沉淀下来的**（role == ASSOC_ROLE_DERIVED）。
+     * 它和「观测到的」要分开：证据强度更低，而且被观测推翻时可以撤销。 */
+    uint8_t known;
+    int     sim;      /* via==5 时的相似度 */
+} ProofStep;
+
+typedef struct {
+    ProofStep step[REL_MAX_PROOF];
+    size_t    n;
+    int       status;     /* +1 真  -1 假  0 未知 */
+    int       guessed;    /* 结论里有没有用到类比推测 */
+    int       guess_hops; /* §6.131：链里有**几环**是记忆里的猜测（0 = 没用） */
+} Proof;
+
+static inline const char *rel_via_name(uint8_t via) {
+    switch (via) {
+        case 0: return "直接事实";
+        case 1: return "传递";
+        case 2: return "继承";
+        case 3: return "对称";
+        case 4: return "逆关系";
+        case 5: return "类比推测";
+        case 6: return "假设";
+        case 7: return "独占";
+        case 8: return "闭合世界";
+        case 9: return "缺前提";   /* R9：做这件事的前提它没有 ⟹ 它做不到 */
+        case 10: return "前提";    /* R10：经前提（前提成立才走这条连结） */
+        case 11: return "前提不";  /* R10b：反前提（前提不在才走） */
+        default: return "?";
+    }
+}
+
+static inline void proof_push(Proof *pf, Token *t, uint8_t rel, uint8_t neg,
+                              uint8_t via, int sim) {
+    if (!pf || pf->n >= REL_MAX_PROOF) return;
+    ProofStep *s = &pf->step[pf->n++];
+    /* **每个字段都要写**：hyp 漏了不写就会留着上一次求解的残值 ——
+     * 实测症状是「撤回假设之后再问，那一步被误标成『靠假设』，
+     * 验证器正确地拒绝（假设里没有它），于是整条问答退化成帧答复」。
+     * 和当年 role 字节没初始化是同一类 bug。 */
+    s->tok = t; s->rel = rel; s->neg = neg; s->via = via; s->sim = sim;
+    s->hyp = 0;
+    s->known = 0;      /* 每个字段都要写（漏了就会留着上一次求解的残值） */
+}
+
+/* 带假设层的事实查询。*from_hypo 填 1 表示这条是从**假设**里来的。
+ * 求解器一律走这个版本 —— 这就是「在假设世界里推理」的全部秘密：
+ * 查询时多看一眼覆盖层，图本身一动不动。 */
+static inline int rel_direct_h(const AI *ai, const Token *a, uint8_t rid, const Token *b,
+                               int *from_hypo) {
+    const HypoFact *hf = ai ? hypo_find(&ai->hypo, ai->view_who, a, rid, b, NULL) : NULL;
+    if (hf && !hf->neg) { if (from_hypo) *from_hypo = 1; return 1; }
+    return 0;
+}
+static inline int rel_direct_neg_h(const AI *ai, const Token *a, uint8_t rid, const Token *b,
+                                   int *from_hypo) {
+    const HypoFact *hf = ai ? hypo_find(&ai->hypo, ai->view_who, a, rid, b, NULL) : NULL;
+    if (hf && hf->neg) { if (from_hypo) *from_hypo = 1; return 1; }
+    return 0;
+}
+
+/* 直查，并报告这条边**是不是推出来沉淀的**（*derived 可以是 NULL）。
+ * 语义和 rel_direct 完全一样，只是多带一个「来源」出来 ——
+ * 求解器要靠它把「观测」和「缓存」分开（证据强度与可撤销性都不同）。 */
+static inline int rel_direct_as(const Token *a, uint8_t rid, const Token *b, int *derived) {
+    if (derived) *derived = 0;
+    if (!a || !b || rid == 0) return 0;
+    if (rid >= REL_DYN_BASE) {            /* 动态关系走自己的那套（§6.80：否定旗子在 nrel 15 位） */
+        uint8_t d = (uint8_t)(rid - REL_DYN_BASE + 1);
+        for (size_t i = 0; i < a->count; ++i) {
+            const AssocEntry *e = &token_assocs_ro(a)[i];
+            if (e->main != b || e->dyn != d || edge_is_causal_guess(e)) continue;
+            if (edge_dyn_neg(e)) continue;         /* 要的是**肯定**那条 */
+            if (derived) *derived = edge_is_guess(e) ? 2
+                                                     : (e->role == ASSOC_ROLE_DERIVED);
+            return 1;
+        }
+        return 0;
+    }
+    uint16_t bit = (uint16_t)(1u << (rid - 1));
+    for (size_t i = 0; i < a->count; ++i) {
+        const AssocEntry *e = &token_assocs_ro(a)[i];
+        if (e->main != b || edge_is_causal_guess(e)) continue;
+        if (e->rel & bit) {
+            if (derived) *derived = edge_is_guess(e) ? 2
+                                                     : (e->role == ASSOC_ROLE_DERIVED);
+            return 1;
+        }
+    }
+    return 0;
+}
+static inline int rel_direct_neg_as(const Token *a, uint8_t rid, const Token *b, int *derived) {
+    if (derived) *derived = 0;
+    if (!a || !b || rid == 0) return 0;
+    if (rid >= REL_DYN_BASE) {            /* 同上：动态关系的否定看 15 位 */
+        uint8_t d = (uint8_t)(rid - REL_DYN_BASE + 1);
+        for (size_t i = 0; i < a->count; ++i) {
+            const AssocEntry *e = &token_assocs_ro(a)[i];
+            if (e->main != b || e->dyn != d || edge_is_causal_guess(e)) continue;
+            if (!edge_dyn_neg(e)) continue;        /* 要的是**否定**那条 */
+            if (derived) *derived = edge_is_guess(e) ? 2
+                                                     : (e->role == ASSOC_ROLE_DERIVED);
+            return 1;
+        }
+        return 0;
+    }
+    uint16_t bit = (uint16_t)(1u << (rid - 1));
+    for (size_t i = 0; i < a->count; ++i) {
+        const AssocEntry *e = &token_assocs_ro(a)[i];
+        if (e->main != b || edge_is_causal_guess(e)) continue;
+        if (e->nrel & bit) {
+            if (derived) *derived = edge_is_guess(e) ? 2
+                                                     : (e->role == ASSOC_ROLE_DERIVED);
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static inline int rel_direct(const Token *a, uint8_t rid, const Token *b) {
+    if (!a || !b || rid == 0) return 0;
+    if (rid >= REL_DYN_BASE) {                      /* 动态关系 */
+        uint8_t d = (uint8_t)(rid - REL_DYN_BASE + 1);
+        /* §6.793 动态关系也有否定（`nrel` 第 15 位，见 token.h 的 edge_dyn_neg）：
+         * **肯定查询必须排除否定边**，否则「乙 不 拿 红球」会让「乙 拿 红球」答"对"。 */
+        for (size_t i = 0; i < a->count; ++i)
+            if (token_assocs_ro(a)[i].main == b && token_assocs_ro(a)[i].dyn == d &&
+                !edge_is_guess(&token_assocs_ro(a)[i]) &&
+                !edge_dyn_neg(&token_assocs_ro(a)[i])) { edgeuse_hit(a, i); return 1; }
+        return 0;
+    }
+    uint16_t bit = REL_BIT(rid);
+    for (size_t i = 0; i < a->count; ++i)
+        if (token_assocs_ro(a)[i].main == b && !edge_is_guess(&token_assocs_ro(a)[i]) &&
+            (token_assocs_ro(a)[i].rel & bit)) { edgeuse_hit(a, i); return 1; }  /* §6.125 猜测记忆**不算知识** */
+    return 0;
+}
+
+/* §6.793 一条边算不算"这个关系"（核心用 rel/nrel 位，动态用 dyn + 第 15 位）。
+ * neg_out 返回极性（0 肯定 / 1 否定）。**所有"扫边"的地方都该用它** ——
+ * 以前 `::solve` 直接 `& REL_BIT(rid)`，动态关系（rid ≥ REL_DYN_BASE）永远查不到事实。 */
+static inline int rel_edge_is(const AssocEntry *e, uint8_t rid, int *neg_out) {
+    if (!e || !e->main) return 0;
+    if (rid >= REL_DYN_BASE) {
+        uint8_t d = (uint8_t)(rid - REL_DYN_BASE + 1);
+        if (e->dyn != d) return 0;
+        if (neg_out) *neg_out = edge_dyn_neg(e);
+        return 1;
+    }
+    uint16_t bit = REL_BIT(rid);
+    if (e->rel & bit)  { if (neg_out) *neg_out = 0; return 1; }
+    if (e->nrel & bit) { if (neg_out) *neg_out = 1; return 1; }
+    return 0;
+}
+
+static inline int rel_direct_neg(const Token *a, uint8_t rid, const Token *b) {
+    if (!a || !b || rid == 0) return 0;
+    if (rid >= REL_DYN_BASE) {                    /* §6.793 动态关系的否定走边上的第 15 位 */
+        uint8_t d = (uint8_t)(rid - REL_DYN_BASE + 1);
+        for (size_t i = 0; i < a->count; ++i)
+            if (token_assocs_ro(a)[i].main == b && token_assocs_ro(a)[i].dyn == d &&
+                !edge_is_guess(&token_assocs_ro(a)[i]) &&
+                edge_dyn_neg(&token_assocs_ro(a)[i])) { edgeuse_hit(a, i); return 1; }
+        return 0;
+    }
+    uint16_t bit = REL_BIT(rid);
+    for (size_t i = 0; i < a->count; ++i)
+        if (token_assocs_ro(a)[i].main == b && !edge_is_guess(&token_assocs_ro(a)[i]) &&
+            (token_assocs_ro(a)[i].nrel & bit)) { edgeuse_hit(a, i); return 1; }  /* §6.125 同上 */
+    return 0;
+}
+
+/* §6.125 「这条边是**记忆里的猜测**吗」（供可见性那一趟用；`derived == 2` 是记号的来源） */
+/* §6.131 **猜出来的结论有多大把握** —— 按"链里有几环是猜测"衰减。
+ * 1 环 = 0.45（与 §6.125 一致，逐字节不变）；每多一环乘 0.7；下限 0.15。
+ * 为什么必须衰减：原来无论接了几环都写死 0.45 ⇒ **猜得越多越像有把握**，方向正好反了。 */
+static inline float ai_guess_conf(int hops) {
+    float c = 0.45f;
+    if (hops <= 1) return c;
+    for (int i = 1; i < hops && i < 12; ++i) c *= 0.7f;
+    return c < 0.15f ? 0.15f : c;
+}
+
+static inline int rel_direct_guess(const Token *a, uint8_t rid, const Token *b, int want_neg) {
+    int dv = 0;
+    int r = want_neg ? rel_direct_neg_as(a, rid, b, &dv) : rel_direct_as(a, rid, b, &dv);
+    return r && dv == 2;
+}
+
+/* 在最前面插一个起点 t，并把「走到第二个点用的是哪条规则」标在那一步上。
+ * 规则标签属于**到达的那一步**（step[i].via = 从 step[i-1] 到 step[i] 用了什么规则），
+ * 挂在起点上是没意义的 —— 第一次写就挂错了，链上显示成了「直接事实」。 */
+/* 枚举「以 a 为主语、关系为 rid 的下一步候选」：**图里的边 + 假设层里的边**。
+ *
+ * 这一步是反事实推理能不能往外推的关键。第一版只在图里搜，
+ * 于是「如果 猫 属于 鸟」推不出「猫 会 飞」—— 因为假设那条边**根本不在图里**
+ * （这正是我们要的：假设不进图），图里的循环自然看不到它。
+ * 所以搜索也必须过一遍覆盖层。 */
+static inline size_t rel_next_cands(const AI *ai, const Token *a, uint8_t rid,
+                                    int neg_want, Token **out, uint8_t *from_hyp,
+                                    size_t cap) {
+    size_t n = 0;
+    if (!a || !out) return 0;
+    if (from_hyp) for (size_t i = 0; i < cap; ++i) from_hyp[i] = 0;
+    /* 边界用 REL_DYN_BASE，不用 REL_CONTAIN —— 「包含」的 id 正好是 8，
+     * 写成 `rid < REL_CONTAIN` 会把它错当成动态关系，永远查不到边（踩过）。 */
+    if (rid < REL_DYN_BASE) {
+        uint16_t bit = REL_BIT(rid);
+        for (size_t i = 0; i < a->count && n < cap; ++i) {
+            const AssocEntry *e = &token_assocs_ro(a)[i];
+            if (!e->main || e->main == a) continue;
+            /* 缓存当中间跳要**先有依据**：没依据的缓存不算路（和 R0 同一道闸）。
+             * §6.131 例外：**记忆里的猜测**本来就"重推不出来"（它正是为这个才被记下来的），
+             * 所以它永远过不了那道闸 —— 想拿它接链，只能在 `rel_chain_on()` 且
+             * **记忆可见**（不是复核模式）时显式放行，并且由调用方把这一跳计进 guess_hops。 */
+            if (e->role == ASSOC_ROLE_DERIVED) {
+                if (g_rel_ignore_derived) continue;
+                if (edge_is_guess(e)) {
+                    if (!(g_rel_guess_visible && rel_chain_on())) continue;
+                } else if (!rel_solve_ignoring_caches((AI *)ai, a, rid, e->main, neg_want)) {
+                    continue;
+                }
+            }
+            if (neg_want ? (e->nrel & bit) : (e->rel & bit)) { edgeuse_hit(a, i); out[n++] = e->main; }
+        }
+    } else {
+        uint8_t d = (uint8_t)(rid - REL_DYN_BASE + 1);
+        for (size_t i = 0; i < a->count && n < cap; ++i) {
+            const AssocEntry *e = &token_assocs_ro(a)[i];
+            if (!e->main || e->main == a || e->dyn != d) continue;
+            if (neg_want ? !edge_dyn_neg(e) : edge_dyn_neg(e)) continue;   /* §6.80：否定也算一档 */
+            out[n++] = e->main;
+        }
+    }
+    if (ai) {
+        const HypoFact *hf[AI_MAX_HYPO * AI_MAX_HYPO_DEPTH];
+        size_t nh = hypo_edges(&ai->hypo, ai->view_who, a, rid, neg_want, hf,
+                               sizeof hf / sizeof hf[0]);
+        for (size_t i = 0; i < nh && n < cap; ++i) {
+            if (hf[i]->b == a) continue;
+            int dup = 0;
+            for (size_t q = 0; q < n; ++q) if (out[q] == hf[i]->b) { dup = 1; break; }
+            if (!dup) { out[n] = hf[i]->b; if (from_hyp) from_hyp[n] = 1; n++; }
+        }
+    }
+    return n;
+}
+
+/* ---- 「假设也要进检索/帧层」：冲突检测 ----
+ *
+ * 以前假设只做到「不被代偿」：关系层被叫停，可检索/帧层照样按**没有假设**的世界
+ * 答话 —— 「如果 猫 会 飞」之后还能听见「猫 不会 飞」。
+ * 判定很朴素：这句话里若有一对词 (x,y)，图里有 x -[r]-> y（或否定形式），
+ * 而**看得见的假设**里写的是相反的极性，就算冲突。
+ * 不做语义理解，只用「句子里出现的边 + 假设层」这一套同一事实视图。
+ * 没开假设时零开销（先查 hypo_visible_n）。 */
+static inline size_t ai_hypo_conflicts(const AI *ai, const Token *view_who,
+                                       Token *const *seq, size_t n,
+                                       char *out, size_t cap) {
+    size_t nconf = 0;
+    if (out && cap) out[0] = 0;
+    if (!ai || !seq || n < 2) return 0;
+    if (n > 32) n = 32;
+    if (hypo_visible_n(&ai->hypo, view_who) == 0) return 0;
+    for (size_t i = 0; i < n; ++i) {
+        const Token *x = seq[i];
+        if (!x) continue;
+        for (size_t j = 0; j < n; ++j) {
+            const Token *y = seq[j];
+            if (!y || y == x) continue;
+            for (size_t k = 0; k < x->count; ++k) {
+                const AssocEntry *e = &token_assocs_ro(x)[k];
+                if (e->main != y) continue;
+                for (uint8_t r = 1; r <= REL_CORE_MAX; ++r) {
+                    uint16_t bit = REL_BIT(r);
+                    int gpos = (e->rel  & bit) ? 1 : 0;
+                    int gneg = (e->nrel & bit) ? 1 : 0;
+                    if (!gpos && !gneg) continue;
+                    const HypoFact *hf = hypo_find(&ai->hypo, view_who, x, r, y, NULL);
+                    if (!hf) continue;
+                    int hneg = hf->neg ? 1 : 0;
+                    if ((gpos && hneg) || (gneg && !hneg)) {
+                        nconf++;
+                        if (out && cap && !out[0]) {
+                            const RelDef *rd = rel_by_id(r);
+                            snprintf(out, cap, "%s %s%s %s",
+                                     x->name ? x->name : "?",
+                                     hneg ? "" : "不 ",
+                                     rd && rd->name ? rd->name : "?",
+                                     y->name ? y->name : "?");
+                        }
+                    }
+                }
+            }
+        }
+    }
+    /* 第二路：**看句面**，不依赖图里有没有那条边。
+     * 帧层的答复是模板渲染出来的（`我 不 怕 黑`），句中的边不一定在图里 ——
+     * 只查图的话，假设就管不住帧层。判据：
+     *   句子里同时出现 a 和 b，且中间夹着这个关系的词（怕/会/属于…），
+     *   就算这句在讲那条关系；极性看 a 与关系词之间有没有「不」「没」。 */
+    for (size_t k = 0; k < ai->hypo.depth; ++k) {
+        const HypoFrame *f = &ai->hypo.fr[k];
+        if (!hypo_frame_visible(f, view_who)) continue;
+        for (size_t q = 0; q < f->n; ++q) {
+            const HypoFact *hp = &f->f[q];
+            const RelDef *rd = rel_by_id(hp->rid);
+            if (!rd || !rd->name || !hp->a || !hp->b) continue;
+            size_t ia = n, ib = n, ir = n;
+            for (size_t i = 0; i < n; ++i) {
+                const Token *t = seq[i];
+                if (!t) continue;
+                if (ia == n) { if (t == hp->a) ia = i; continue; }
+                if (ir == n && t->name && strcmp(t->name, rd->name) == 0) { ir = i; continue; }
+                if (t == hp->b) { ib = i; break; }
+            }
+            if (ia == n || ir == n || ib == n) continue;
+            int sneg = 0;
+            for (size_t i = ia; i < ir; ++i)
+                if (seq[i] && seq[i]->name &&
+                    (strcmp(seq[i]->name, "不") == 0 || strcmp(seq[i]->name, "没") == 0)) {
+                    sneg = 1; break;
+                }
+            if (sneg == (hp->neg ? 1 : 0)) continue;   /* 极性一致 → 不算冲突 */
+            nconf++;
+            if (out && cap && !out[0])
+                snprintf(out, cap, "%s %s%s %s",
+                         hp->a->name ? hp->a->name : "?",
+                         hp->neg ? "" : "不 ",
+                         rd->name,
+                         hp->b->name ? hp->b->name : "?");
+        }
+    }
+    return nconf;
+}
+
+static inline void proof_prepend_step(Proof *pf, Token *t, uint8_t rel,
+                                      uint8_t via, int sim, uint8_t hyp) {
+    if (!pf || pf->n + 1 >= REL_MAX_PROOF) return;
+    for (size_t q = pf->n; q > 0; --q) pf->step[q] = pf->step[q-1];
+    pf->step[0].tok = t; pf->step[0].rel = 0; pf->step[0].neg = 0;
+    pf->step[0].via = 0; pf->step[0].sim = 0;
+    pf->step[0].hyp = 0; pf->step[0].known = 0;
+    pf->step[1].rel = rel;
+    pf->step[1].via = via;
+    pf->step[1].sim = sim;
+    pf->step[1].hyp = hyp;
+    pf->step[1].known = 0;
+    pf->n++;
+}
+
+/* 求解：A R B 是真是假？want_neg=1 时求「A 不 R B」。
+ * 返回 1 表示求出了确定结论（pf->status = +1 / -1）。 */
+/* 前向声明：下面两个「规则前提」判定要递归用求解器 */
+/* 复核模式下用的查边：**只看干净的图观测** ——
+ * 跳过推出来沉淀的边、跳过自相矛盾的边（rel/nrel 同位都置 = 这条边自己打架，
+ * 它不该给任何缓存当依据）、也不认假设覆盖层（假设不是知识）。
+ * 定义在 rel_solve_go 之前（它要用），而 rel_solve_go 之后定义的复核函数还会用到它。 */
+static inline int rel_direct_review(const Token *a, uint8_t rid, const Token *b,
+                                    int want_neg) {
+    if (!a || !b || rid == 0 || rid >= REL_DYN_BASE) return 0;
+    uint16_t bit = REL_BIT(rid);
+    for (size_t i = 0; i < a->count; ++i) {
+        const AssocEntry *e = &token_assocs_ro(a)[i];
+        if (e->main != b || edge_is_causal_guess(e)) continue;
+        if (e->role == ASSOC_ROLE_DERIVED) continue;       /* 缓存不算依据 */
+        if ((e->rel & bit) && (e->nrel & bit)) continue;   /* 自己打架的边不算依据 */
+        if (want_neg ? (e->nrel & bit) : (e->rel & bit)) return 1;
+    }
+    return 0;
+}
+
+/* 把缓存排除在外再推一遍（返回是否能推出确定的真值）。定义在 rel_solve 之后。 */
+static inline int rel_solve_ignoring_caches(AI *ai, const Token *a, uint8_t rid,
+                                            const Token *b, int want_neg);
+
+static inline int rel_solve_go(AI *ai, const Token *a, uint8_t rid, const Token *b,
+                               int want_neg, Proof *pf, int depth,
+                               const Token **seen, size_t n_seen);
+
+/* ---- 独占规则（R6）的前提独立判定 ----
+ * 验证器要用它**重新检查**这一步凭什么成立，而不是相信构造时标的 rule=7。
+ * 返回证据 b1（为什么能否定 b），没有证据返回 NULL。 */
+/* 把一层假设渲染成短文本：「猫 属于 鸟」/「他 以为：猫 会 飞」。
+ * 撤回的时候要能说清撤掉的是哪一层（只说「撤了一层」等于没说）。 */
+static inline void hypo_frame_text(const AI *ai, size_t k, char *out, size_t cap) {
+    if (!out || cap == 0) return;
+    out[0] = 0;
+    if (!ai || k >= ai->hypo.depth) return;
+    const HypoFrame *f = &ai->hypo.fr[k];
+    size_t off = 0;
+    if (f->who && f->who->name)
+        off += (size_t)snprintf(out + off, cap - off, "%s 以为：", f->who->name);
+    for (size_t i = 0; i < f->n && off < cap; ++i) {
+        const HypoFact *x = &f->f[i];
+        off += (size_t)snprintf(out + off, cap - off, "%s%s %s%s %s",
+                                i ? "；" : "",
+                                x->a && x->a->name ? x->a->name : "?",
+                                x->neg ? "不 " : "",
+                                rel_name_of(ai, x->rid),
+                                x->b && x->b->name ? x->b->name : "?");
+    }
+}
+
+static inline int rel_is_excl(const AI *ai, uint8_t rid) {
+    if (!ai || rid == 0 || rid > REL_TABLE_MAX) return 0;
+    return ai->rel_excl[rid] != 0;
+}
+static inline Token *rel_excl_witness(AI *ai, const Token *a, uint8_t rid,
+                                     const Token *b, int depth) {
+    if (!ai || !a || !b || !rel_is_excl(ai, rid)) return NULL;
+    Token *cands[128];
+    uint8_t chyp[128];
+    size_t nc = rel_next_cands(ai, a, rid, 0, cands, chyp, 128);
+    for (size_t i = 0; i < nc; ++i) {
+        Token *b1 = cands[i];
+        if (!b1 || b1 == b || b1 == a) continue;
+        /* b1 与 b 互不包含 —— 用 属于 的闭包判，两向都要查。
+         * §6.585 **修一个真 bug**：`rel_solve_go` 的返回值是"解出来了"（status 可能是 **-1 = 解出否定**），
+         * 不是"解出肯定"。以前这里只看返回值 ⇒ 当求解器能证明「b1 **不** 属于 b」（R6/独占已经
+         * 判定两者不相交）时，被误当成"b1 ⊂ b"⇒ 当成包含 ⇒ `rel_excl_witness` 返回 NULL
+         * ⇒ 独占冲突**看不见**（实测：`狗 属于 植物` 之后再教 `狗 属于 猫科`，两条都留下、
+         * 都答"对"）。这里要求 `pf.status > 0`（真的解出肯定）才算包含。 */
+        {
+            Proof ipf;
+            memset(&ipf, 0, sizeof ipf);
+            if (rel_solve_go(ai, b1, REL_IS_A, b, 0, &ipf, depth + 1, NULL, 0) && ipf.status > 0)
+                continue;
+            memset(&ipf, 0, sizeof ipf);
+            if (rel_solve_go(ai, b, REL_IS_A, b1, 0, &ipf, depth + 1, NULL, 0) && ipf.status > 0)
+                continue;
+        }
+        return b1;
+    }
+    return NULL;
+}
+
+/* ---- 「前提」的见证（R9 用）----
+ * 做一件事 Y 得先有 P（`Y 需要 P`），而 X 恰好**没有** P ⟹ X 不 会 Y。
+ * 找得到这样的 P 就返回它 —— 和独占那条规则一个套路：链上只写结论，
+ * 「理由」由规则号表达，验证器再独立复核一遍。
+ * 两处各放一跳继承（多了容易推歪）：
+ *   · Y 需要 P 也可以来自上位能力（Y 属于 Y'，Y' 需要 P）；
+ *   · X 没有 P 也可以来自上位（X 属于 X'，X' 没有 P）。 */
+static inline Token *rel_need_witness(AI *ai, const Token *x, const Token *y, int depth) {
+    if (!ai || !x || !y || depth > REL_MAX_DEPTH) return NULL;
+    Token   *need[64];
+    uint8_t  nh[64];
+    size_t nn = rel_next_cands(ai, y, REL_NEED, 0, need, nh, 64);
+    {   /* 上位能力的要求也继承：Y 属于 Y'，Y' 需要 P */
+        Token   *sup[32];
+        uint8_t  sh[32];
+        size_t ns = rel_next_cands(ai, y, REL_IS_A, 0, sup, sh, 32);
+        for (size_t i = 0; i < ns && nn < 64; ++i) {
+            uint8_t tmp[64];
+            size_t add = rel_next_cands(ai, sup[i], REL_NEED, 0,
+                                        need + nn, tmp, 64 - nn);
+            nn += add;
+        }
+    }
+    if (nn == 0) return NULL;
+    Token   *whole[32];
+    uint8_t  wh[32];
+    size_t nw = rel_next_cands(ai, x, REL_IS_A, 0, whole, wh, 32);
+    for (size_t i = 0; i < nn; ++i) {
+        Token *p = need[i];
+        if (!p || p == x || p == y) continue;
+        if (rel_direct_neg(x, REL_HAS, p)) return p;
+        for (size_t k = 0; k < nw; ++k) {
+            if (whole[k] == p) continue;
+            if (rel_direct_neg(whole[k], REL_HAS, p)) return p;
+        }
+    }
+    return NULL;
+}
+
+/* ---- 闭合世界（R7）的前提独立判定 ---- */
+static inline int rel_cw_ok(const AI *ai, const Token *a) {
+    if (!ai || !ai->closed_world || !a) return 0;
+    for (size_t i = 0; i < a->count; ++i)
+        if (token_assocs_ro(a)[i].rel || token_assocs_ro(a)[i].nrel || token_assocs_ro(a)[i].dyn) return 1;
+    return 0;
+}
+
+static inline int token_has_attr_quantity(const Token *A, const Token *B);   /* §6.592 */
+
+static inline int rel_solve_go(AI *ai, const Token *a, uint8_t rid, const Token *b,
+                               int want_neg, Proof *pf, int depth,
+                               const Token **seen, size_t n_seen) {
+    if (!ai || !a || !b || depth > REL_MAX_DEPTH) return 0;
+    const RelDef *rd = rel_by_id(rid);
+    /* 属性 = 核心关系声明 ∪ `relprops.txt`（数据）∪ 同义组（一跳）。
+     * 以前 `if (rd)` 把动态谓语整段排除在 R1/R3/R4 之外 —— 教得进、问不出。 */
+    RelPropView rpv;
+    int have_prop = relprops_of(ai, rid, &rpv);
+
+    /* R0 直接（图 + 假设覆盖层）。
+     * via=6 表示这一步靠的是假设 —— 链上会标成 DER_HYP，
+     * 答复也必须写明「在假设下」，不能和真事实混为一谈。 */
+    int hy_pos = 0, hy_neg = 0;
+    int kn_pos = 0, kn_neg = 0;
+    int d_pos, d_neg;
+    if (g_rel_ignore_derived) {
+        /* 复核模式：只用干净的图观测（缓存不算依据，不然「用缓存证明缓存」是循环论证；
+         * 假设也不算 —— 假设不是知识） */
+        d_pos = rel_direct_review(a, rid, b, 0);
+        d_neg = rel_direct_review(a, rid, b, 1);
+        /* §6.592 复核（"缓存要跟着前提走"用的就是这条路）也要认数量宾语 ——
+         * 否则下面那条 `rel_solve_ignoring_caches` 会把数量规则判成"没依据"而把 d_pos 打回 0
+         * （实测：问数目答得出、问"有没有"却回"我不太确定"）。 */
+        if (rid == REL_HAS && !d_pos && token_has_attr_quantity(a, b)) d_pos = 1;
+    } else {
+        d_pos = rel_direct_as(a, rid, b, &kn_pos) || rel_direct_h(ai, a, rid, b, &hy_pos);
+        d_neg = rel_direct_neg_as(a, rid, b, &kn_neg) ||
+                rel_direct_neg_h(ai, a, rid, b, &hy_neg);
+    }
+    /* §6.592 **数量宾语蕴含属性**：`A 有 四个轮子` ⇒「A 有 轮子」为真（只对 REL_HAS）。
+     * 放在求解器的"直接事实"这一层 ⇒ 答复路径和推理走同一个判据，
+     * 不会出现"问数目答得出、问有没有却说不知道"的分裂。 */
+    if (rid == REL_HAS && !d_pos && token_has_attr_quantity(a, b)) {
+        /* 这是**蕴含**（一条真事实 + 数量宾语），不是"缓存" ⇒ 别把 `kn_pos` 立起来：
+         * 立起来会被当成 DER_KNOWN 去"独立重推"，而那条边在图里并不存在 ⇒ 判成缺口。
+         * 让验证器按 DER_FACT + 同一判据（`derive.h` 里那条）复核。 */
+        d_pos = 1;
+    }
+    /* **缓存要跟着前提走**：一条推出来沉淀的边，只有在「把它排除在外还推得出来」
+     * 的时候才算数。前提被推翻 / 被撤 / 自己也是缓存而它的依据没了 ——
+     * 三种情况都会在这里失手，于是这条缓存当场不被采信（收尾时再撤销它）。
+     * 复核本身用 g_rel_ignore_derived 挡住递归（复核里不再复核）。 */
+    if (d_pos && kn_pos && !g_rel_ignore_derived && !rel_solve_ignoring_caches(ai, a, rid, b, 0))
+        d_pos = 0;
+    if (d_neg && kn_neg && !g_rel_ignore_derived && !rel_solve_ignoring_caches(ai, a, rid, b, 1))
+        d_neg = 0;
+    /* §6.125 **记忆里的猜测**（RECURSIVE TRANSFER 的入口）。
+     * 上一段那道"缓存要跟着前提走"的闸，把**纯猜测**（没有独立依据、重推不出来）关在门外 ——
+     * 这正是防中毒的关键。这里给出一趟**明确打开**的例外：只在 `g_rel_guess_visible` 时可见，
+     * 而且用上它就**把整条证明标成 guessed**（答复必须写"先前推测的"）。
+     * 三个"看不见"的场合：复核模式（g_rel_ignore_derived）、验证器自查"知识库里有吗"、
+     * 以及任何没开这个全局的普通求解 —— 所以记忆永远不会变成"知道的"。 */
+    int mem_used = 0;
+    if (g_rel_guess_visible && !g_rel_ignore_derived) {
+        if (!d_pos && rel_direct_guess(a, rid, b, 0)) { d_pos = 1; kn_pos = 2; mem_used = 1; }
+        if (!d_neg && rel_direct_guess(a, rid, b, 1)) { d_neg = 1; kn_neg = 2; mem_used = 1; }
+        if (mem_used) { g_rel_guess_hops++; if (pf) pf->guessed = 1; }
+    }
+    if (want_neg ? d_neg : d_pos) {
+        uint8_t via = ((want_neg ? hy_neg : hy_pos) && !(want_neg ? rel_direct_neg(a, rid, b)
+                                                                 : rel_direct(a, rid, b)))
+                          ? 6 : 0;
+        int known = want_neg ? kn_neg : kn_pos;
+        proof_push(pf, (Token *)a, 0, 0, 0, 0);        /* proof_push 内部会判 pf */
+        proof_push(pf, (Token *)b, rid, (uint8_t)want_neg, via, 0);
+        if (pf && via == 6) pf->step[pf->n - 1].hyp = 1;
+        if (pf && known && via != 6) pf->step[pf->n - 1].known = 1;
+        /* pf 可能是 NULL：对称/逆关系那两条规则递归时只需要「成不成立」，
+         * 不要路径。这里必须判空 —— 漏了它直接段错误（ASan 抓到的）。 */
+        if (pf) pf->status = want_neg ? -1 : +1;
+        return 1;
+    }
+
+    if (rd || have_prop) {
+        /* **具体优先于一般**（非单调推理的核心，default with exceptions）：
+         * 同一对词上若已经有一条**观测到的**边说的是正相反的事，
+         * 那么靠规则外推出来的结论要让路 —— 不是「两边都成立、报个矛盾」，
+         * 而是「这条一般规则在这个具体例子上被推翻了」。
+         * 实测触发它的场景：
+         *   猫 属于 动物、动物 有 毛 ⟹ 猫 有 毛（继承）；随后用户说「猫 没有 毛」
+         *   —— 观测是具体事实，规则该让路。不让路的话每轮都会报「自相矛盾」，
+         *   而且用户教的修正永远留不下来。
+         * 只判 depth==0：例外不许传播到推理内部（传播出去会把整条链都掐死）。
+         * 只认**非缓存**的直接边：缓存是自己以前记的笔记，不是观测，
+         * 它该被现场推理推翻并撤销（见 think.h 的「缓存被推翻」）。 */
+        /* **具体优先于一般**（default with exceptions）的边界，每一条都是被回归逼出来的：
+         *   ① 只挡**传递/继承**这两条外推规则。独占(R7)/闭合世界(R8)/缺前提(R9)
+         *      不挡 —— 它们的结论本来就是「否定」，拿它们和直接否定对撞没意义；
+         *      挡了还会改掉依据链（`·独占` 变成直接事实），而那是回归钉住的呈现。
+         *   ② 只判 depth==0：例外不许传播到推理内部（传播出去会把整条链掐死）。
+         *   ③ **假设世界里不挡**：覆盖层本来就压过图里的边（R0 已经这么做），
+         *      挡了会出现「如果 猫 属于 鸟」推不出「猫 会 飞」（实测）。
+         *   ④ 只认**非缓存**的直接边：缓存是自己以前记的笔记，不是观测；
+         *      它该被现场推理推翻并撤销（见 think.h 的「缓存被推翻」）。 */
+        int spec_blocked = 0;
+        if (depth == 0 && hypo_visible_n(&ai->hypo, ai->view_who) == 0) {
+            int derived = 0;
+            int opposite_direct = want_neg ? rel_direct_as(a, rid, b, &derived)
+                                           : rel_direct_neg_as(a, rid, b, &derived);
+            if (opposite_direct && !derived) spec_blocked = 1;
+        }
+        for (size_t i = 0; i < n_seen; ++i) if (seen[i] == a) return 0;
+        if (n_seen >= REL_MAX_DEPTH) return 0;
+        const Token *nseen[REL_MAX_DEPTH + 1];
+        for (size_t i = 0; i < n_seen; ++i) nseen[i] = seen[i];
+        nseen[n_seen] = a;
+
+        /* R1 传递（候选来自图 + 假设层）—— 被具体事实挡住时不外推 */
+        if (rpv.trans && !spec_blocked) {
+            Token *cands[128];
+            uint8_t chyp[128];
+            size_t nc = rel_next_cands(ai, a, rid, want_neg, cands, chyp, 128);
+            for (size_t i = 0; i < nc; ++i) {
+                if (cands[i] == b) continue;
+                size_t save = pf ? pf->n : 0;
+                /* §6.131：**这一跳是不是"记忆里的猜测"** —— 是就把它计进整趟的跳数。
+                 * 回溯失败要还原（成功那条路保留），否则计数会把所有试过的岔路都算上。 */
+                int gsave = g_rel_guess_hops;
+                int via_mem = rel_direct_guess(a, rid, cands[i], want_neg);
+                if (via_mem) g_rel_guess_hops++;
+                if (rel_solve_go(ai, cands[i], rid, b, want_neg, pf, depth + 1,
+                                 nseen, n_seen + 1)) {
+                    proof_prepend_step(pf, (Token *)a, rid, 1, via_mem ? 5 : 0, chyp[i]);
+                    if (pf && via_mem) pf->guessed = 1;
+                    return 1;
+                }
+                if (pf) pf->n = save;
+                g_rel_guess_hops = gsave;
+            }
+        }
+        /* R2 继承（肯定与否定都能继承）—— 同上，被具体事实挡住时不外推 */
+        if (rpv.inherit && !spec_blocked) {
+            for (int wneg = 0; wneg <= 1; ++wneg) {
+                if (want_neg && !wneg) continue;      /* 只在求否定时试否定继承 */
+                if (!want_neg && wneg) continue;
+                Token *cands[128];
+                uint8_t chyp[128];
+                size_t nc = rel_next_cands(ai, a, REL_IS_A, 0, cands, chyp, 128);
+                for (size_t i = 0; i < nc; ++i) {
+                    if (cands[i] == b) continue;
+                    size_t save = pf ? pf->n : 0;
+                    if (rel_solve_go(ai, cands[i], rid, b, wneg, pf, depth + 1,
+                                     nseen, n_seen + 1)) {
+                        proof_prepend_step(pf, (Token *)a, REL_IS_A, 2, 0, chyp[i]);
+                        return 1;
+                    }
+                    if (pf) pf->n = save;
+                }
+            }
+        }
+        /* R10 **经前提**（用户要的「推理层按前提决定用不用」）：
+         *   A —[前提]→ P，**P 在当前注意窗口里**（前提成立），且 P R B ⟹ A R B。
+         * 与 R2 继承的区别：走的是**前提链接**（边上的 [前提] 标记），不是「属于」；
+         * 而且它**带闸门**：前提不成立就**不用**这条连结（不是"图里没有"，
+         * 而是"现在用不了"）。前提本身是普通符号节点（联想照走）—— 闸门只在逻辑这一侧。
+         * 由 `tools/optest.c` / `tests/tokenop.sh` 钉住：前提在提问里 → 用；不在 → 不用。 */
+        if (!spec_blocked) {
+            for (size_t i = 0; i < a->count; ++i) {
+                const AssocEntry *pe = &token_assocs_ro(a)[i];
+                int ppol = edge_premise_polarity(pe);
+                if (!ppol || !pe->main) continue;
+                Token *P = pe->main;
+                if (P == b) continue;
+                /* 条件不成立 → 不用：正前提要它在窗口里，反前提要它**不在** */
+                if (!ai_premise_cond_ok(ai, P, ppol)) continue;
+                size_t save = pf ? pf->n : 0;
+                if (rel_solve_go(ai, P, rid, b, want_neg, pf, depth + 1,
+                                 nseen, n_seen + 1)) {
+                    proof_prepend_step(pf, (Token *)a, 0, (uint8_t)(ppol < 0 ? 11 : 10), 0, 0);
+                    return 1;
+                }
+                if (pf) pf->n = save;
+            }
+        }
+        /* R3 对称：B R A ⟹ A R B。
+         * 链上直接写成 A -[R·对称]-> B —— 把反向路径原样搬过来会读成
+         * 「B → A」，与问题方向相反，反而看不懂。 */
+        if (rpv.sym) {
+            size_t save = pf ? pf->n : 0;
+            if (rel_solve_go(ai, b, rid, a, want_neg, NULL, depth + 1,
+                             nseen, n_seen + 1)) {
+                if (pf) {
+                    pf->n = 0;
+                    proof_push(pf, (Token *)a, 0, 0, 0, 0);
+                    proof_push(pf, (Token *)b, rid, (uint8_t)want_neg, 3, 0);
+                    pf->status = want_neg ? -1 : +1;
+                }
+                return 1;
+            }
+            if (pf) pf->n = save;
+        }
+        /* R6 独占（函数式）：a R b1 且 R 独占，b1 与 b2 **互不包含**
+         *   ⟹ a 不 R b2。
+         *
+         * 「互不包含」这一条是安全阀，不能省：
+         *   猫 属于 动物，问 猫 属于 鸟 —— 鸟 属于 动物（鸟 ⊂ 动物），
+         *   所以「猫 是 鸟」完全可能，**推不出否定**。
+         *   猫 属于 动物，问 猫 属于 植物 —— 动物 与 植物 互不包含 → 能推出否定。
+         * 这正是「完备性」那条局限的正面解法：不靠「没写就算假」，
+         * 靠一条声明出来的公理 + 一次包含判定。 */
+        if (rd && rel_is_excl(ai, rid) && !want_neg) {
+            Token *b1 = rel_excl_witness(ai, a, rid, b, depth);
+            if (b1) {
+                if (pf) {
+                    /* 链上只写**两步**：a（起点）→ b（否定结论）。
+                     * 早先写成 a→b1→b 三跳，看起来像一条链，
+                     * 可验证器按「相邻两环首尾相接」去验就崩了 ——
+                     * b1 是**理由**不是链的一环。理由已经在 rule=7 里表达了。 */
+                    pf->n = 0;
+                    proof_push(pf, (Token *)a, 0, 0, 0, 0);
+                    proof_push(pf, (Token *)b, rid, 1, 7, 0);
+                    pf->status = -1;
+                }
+                return 1;
+            }
+        }
+
+        /* R9 缺前提 → 否定能力：Y 需要 P（做 Y 得先有 P），而 X 没有 P
+         *   ⟹ X 不 会 Y。
+         * 这就是「训练数据里没有『猫 会不会唱歌』，却能推出来」的那条规则：
+         *   唱歌 需要 灵活的声带；猫 没有 灵活的声带 ⟹ 猫 不 会 唱歌。
+         * 只加在「求否定 + 这个关系**在表里声明了 prereq**」上 ——
+         * 别的动词（吃/喜欢/怕…）没有「前提」这回事，硬套会推出
+         * 「猫 没有 声带 ⟹ 猫 不 喜欢唱歌」这种胡话。 */
+        if (want_neg && rd && rd->prereq && rel_need_witness(ai, a, b, depth)) {
+            if (pf) {
+                pf->n = 0;
+                proof_push(pf, (Token *)a, 0, 0, 0, 0);
+                proof_push(pf, (Token *)b, rid, 1, 9, 0);
+                pf->status = -1;
+            }
+            return 1;
+        }
+
+        /* R4 逆关系：B inv(R) A ⟹ A R B。
+         * `inv` 现在是**名字**（数据表里写的），要现查 id —— 逆谓词可能还没进图
+         * （只教了 `甲 卖 乙`，`买` 是问句里才出现的）⇒ 查不到就不推，不硬登记。 */
+        uint8_t inv_id = rpv.inv[0] ? rel_id_of(ai, rpv.inv, 0) : 0;
+        if (inv_id) {
+            size_t save = pf ? pf->n : 0;
+            if (rel_solve_go(ai, b, inv_id, a, want_neg, NULL, depth + 1,
+                             nseen, n_seen + 1)) {
+                if (pf) {
+                    pf->n = 0;
+                    proof_push(pf, (Token *)a, 0, 0, 0, 0);
+                    proof_push(pf, (Token *)b, rid, (uint8_t)want_neg, 4, 0);
+                    pf->status = want_neg ? -1 : +1;
+                }
+                return 1;
+            }
+            if (pf) pf->n = save;
+        }
+    }
+    /* R7 闭合世界（**可选，默认关**）：我们认识这个主语（它有别的已知关系），
+     * 却推不出 a R b ⟹ 认为 a 不 R b。
+     *
+     * 这是一个**假设**，不是真理 —— 所以必须显式打开（::world closed）。
+     * 只在最外层用（depth==0）：子目标上乱用会把否定传播到推理内部。
+     * 默认开放世界时，这个分支不生效，推不出就老实说「不知道」。 */
+    if (ai && ai->closed_world && depth == 0 && !want_neg) {
+        if (rel_cw_ok(ai, a)) {
+            if (pf) {
+                pf->n = 0;
+                proof_push(pf, (Token *)a, 0, 0, 0, 0);
+                proof_push(pf, (Token *)b, rid, 1, 8, 0);
+                pf->status = -1;
+            }
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/* **同类互推**（"兄弟"里有没有谁也 R B）：A 与 A2 都 属于 同一个 P，而 A2 —R→ B。
+ * 放在 rel.h 是因为它**在 think.h 与 agent.h 之前** —— 思维层与对话层都要用它
+ * （以前只在 agent.h 里有一份，思维层调不到，只能另写；这正是 §6.100 记的分层问题）。
+ * 返回找到的那个"兄弟"（`*sup_out` 给出共同上位），没有就 NULL。扫描有上限（64 个候选）。 */
+static inline const Token *rel_sibling_with(const AI *ai, const Token *a, uint8_t rid,
+                                            const Token *b, const Token **sup_out) {
+    if (sup_out) *sup_out = NULL;
+    if (!ai || !a || !b || rid == 0) return NULL;
+    Token *sup[8];
+    uint8_t sh[8];
+    size_t nsup = rel_next_cands(ai, a, REL_IS_A, 0, sup, sh, 8);
+    for (size_t k = 0; k < nsup; ++k) {
+        const Token *P = sup[k];
+        if (!P || !P->name || P->name[0] == '[' || P == b) continue;
+        size_t scanned = 0;
+        for (size_t i = 0; i < ai->pool->count && scanned < 64; ++i) {
+            const Token *t2 = ai->pool->tokens[i];
+            if (!t2 || t2->is_garbage || t2 == a || !t2->name || t2->name[0] == '[') continue;
+            if (!rel_direct(t2, REL_IS_A, P)) continue;
+            scanned++;
+            if (rel_direct(t2, rid, b)) { if (sup_out) *sup_out = P; return t2; }
+        }
+    }
+    return NULL;
+}
+
+/* ============================ §6.602 独占关系的**矛盾扫描** ============================
+ *
+ * 学习机制允许"先都记着、冲突当场说清"（§6.585/§6.586）⇒ 长期跑下来图里**允许**存在
+ * "A 同时属于两个互不包含的类"。以前只有 `::rel <A>` 一个词能看到 ⚠，没有全局清单。
+ * 这里补**全图扫描**（只扫独占关系；同一个词有 ≥2 个值时才有意义）：
+ *   · 判据和求解器同一份：`rel_is_excl` + 双向包含（`rel_direct` / `rel_solve_go` 且 `status>0`）；
+ *   · 只报"互不包含"的成对值（`猫 属于 猫科` + `猫 属于 动物` **不算**：猫科 ⊂ 动物）；
+ *   · 只诊断、不修：怎么裁决由用户决定（说「不对」走追问式改口，或显式说「X 不 R Y」）。
+ */
+/* §6.687 `g_excl_proof`：允许用"有界证明"判包含吗？
+ * 代价差着几个数量级：直接沿 `属于` 往上走（下面那个 walk）是几十纳秒，
+ * `rel_solve_go` 一次是毫秒级 —— 两两比较时后者直接把命令变成小时级（§6.686）。
+ * 图上**没有以「属于」为结论的规则**时，传递闭包用 walk 就够（和证明等价），
+ * 这时由调用方（main.c 的 ::contradict）把它关掉。默认开（其它调用方行为不变）。 */
+static int g_excl_proof = 1;
+static inline void aip_excl_allow_proof(int on) { g_excl_proof = on ? 1 : 0; }
+
+/* 只沿**直接的** `属于` 边往上走。返回 1 = x 是 y（传递意义上）。
+ *
+ * ⚠ 第一版是**裸递归**（深度上限 8、没有 visited）——在出度 2 万的枢纽上分支爆炸
+ * （2 万^8 条路），`::contradict` 卡在头两千个词里 25 秒没动（§6.687 实测）。
+ * 现在：带 visited 去重 + **最多访问 4096 个节点**（超过就当"证不出来"，
+ * 宁可多报一条冲突，也不许把命令挂死）。 */
+static inline int aip_excl_contained_walk(const Token *x, const Token *y) {
+    if (!x || !y) return 0;
+    if (rel_direct(x, REL_IS_A, y)) return 1;
+    uint32_t seen[512];
+    size_t nseen = 0;
+    const Token *stack[64];
+    size_t sp = 0;
+    size_t scanned = 0;                 /* 扫过多少条边：**这是真正的成本** */
+    stack[sp++] = x;
+    seen[nseen++] = x->id;
+    while (sp) {
+        const Token *cur = stack[--sp];
+        for (size_t i = 0; i < cur->count; ++i) {
+            /* 每次判定最多扫 20000 条边。超了就说"证不出来"（可能多报一条冲突），
+             * 但**绝不允许**一次判定吃掉几百万次扫描 —— 两两比较会把它放大成小时级。 */
+            if (++scanned > 1024) return 0;
+            const AssocEntry *e = &token_assocs_ro(cur)[i];
+            if (!e->main || e->main == cur) continue;
+            if (!(e->rel & REL_BIT(REL_IS_A))) continue;
+            if (e->main == y) return 1;
+            int dup = 0;
+            for (size_t k = 0; k < nseen; ++k) if (seen[k] == e->main->id) { dup = 1; break; }
+            if (dup) continue;
+            if (nseen >= sizeof seen / sizeof seen[0]) return 0;   /* 预算用完：说"证不出来" */
+            seen[nseen++] = e->main->id;
+            if (sp < sizeof stack / sizeof stack[0]) stack[sp++] = e->main;
+        }
+    }
+    return 0;
+}
+
+static inline int aip_excl_contained(AI *ai, const Token *x, const Token *y) {
+    if (!ai || !x || !y) return 0;
+    if (rel_direct(x, REL_IS_A, y)) return 1;
+    if (!g_excl_proof) return aip_excl_contained_walk(x, y);
+    Proof pf;
+    memset(&pf, 0, sizeof pf);
+    if (rel_solve_go(ai, x, REL_IS_A, y, 0, &pf, 0, NULL, 0) && pf.status > 0) return 1;
+    return 0;
+}
+/* §6.603 一条矛盾的**结构化记录**（给"裁决建议"用：谁跟谁、哪条关系）*/
+typedef struct {
+    uint32_t a_id, b1_id, b2_id;
+    uint8_t  rid;
+} AipExclConflict;
+
+/* 返回矛盾条数；`first`/`cap` 里放前 `max_want` 条的可读描述；
+ * `recs`/`rec_cap` 里追加前若干条的结构化记录（可为 NULL/0）。 */
+/* §6.687 **对数预算**：判一次"谁包含谁"要跑一次有界证明（`rel_solve_go`），而这条扫描是
+ * **两两比较**的 —— 10^7 边、出度 2 万的图上 Σ 对数能到 10^8 量级，单次命令跑成小时级
+ * （§6.686 实测 >300 s）。口径：**最多比较 30 万对、每次包含判定最多扫 1024 条边**，到顶就停，
+ * 并把"统计到上限"标出来 ——
+ * 报一个假的小数字比报"≥"更糟；完全不设上限 = 这条命令不可用。*/
+#define AIP_EXCL_PAIR_BUDGET 300000u
+#define AIP_EXCL_MAX_VALS    64u     /* 单个词在独占关系上的值超过这个数就整词跳过 */
+static int g_excl_trunc = 0;                 /* 上一次扫描是不是被预算截断 */
+static size_t g_excl_skipped = 0;            /* 有多少个词因为"独占值太多"被跳过 */
+static inline int aip_excl_truncated(void) { return g_excl_trunc; }
+static inline size_t aip_excl_skipped_words(void) { return g_excl_skipped; }
+
+static inline size_t aip_check_excl_conflicts_rec(AI *ai, char *first, size_t cap, size_t max_want,
+                                                  AipExclConflict *recs, size_t rec_cap) {
+    if (first && cap) first[0] = 0;
+    g_excl_trunc = 0;
+    g_excl_skipped = 0;
+    if (!ai || !ai->pool) return 0;
+    /* §6.697 **精确早退**：图上一条独占关系都没有 ⇒ "独占矛盾"在定义上就不可能有，
+     * 直接返回 0（不是近似、不是抽样）。M 档合成图正是这种（属于/有/会/在…全是多值）：
+     * 原来要全扫 200 万边（45 ms），现在一次表查询就结束（<1 ms）。
+     * 有独占关系时**仍然走原来的全扫**（K10 上 怕=独占，52 s，一字不改）——
+     * 试过"只扫候选词"的版本：M 档确实到 0.5 ms，但 K10 的冲突数从 212 648 变成 298 733
+     * （且截断），语义变了就不算优化，整段回滚。 */
+    {
+        int any_excl = 0;
+        for (uint8_t r = 1; r <= REL_TABLE_MAX && r < REL_DYN_BASE; ++r)
+            if (rel_is_excl(ai, r)) { any_excl = 1; break; }
+        if (!any_excl) return 0;
+    }
+    size_t n = 0;
+    size_t pairs = 0;
+    int _dbg = getenv("AIP_EXCLDBG") ? 1 : 0;
+    size_t _edges = 0, _excl = 0;
+    long _t0 = 0;
+    if (_dbg) { struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); _t0 = (long)ts.tv_sec; }
+    for (size_t i = 0; i < ai->pool->count; ++i) {
+        if (_dbg && ((i % 2000) == 0 || _edges % 200000 == 0)) {
+            struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);
+            fprintf(stderr, "[excl] 词 %zu/%zu 边扫 %zu 独占边 %zu 对数 %zu 冲突 %zu %ld s\n",
+                    i, ai->pool->count, _edges, _excl, pairs, n, (long)ts.tv_sec - _t0);
+        }
+        Token *A = ai->pool->tokens[i];
+        if (!A || A->is_garbage || !token_assocs_resident(A)) continue;
+        /* §6.687 **先数一数**：这个词在某个独占关系上有多少个不同值？
+         * 超过 AIP_EXCL_MAX_VALS 就**整词跳过**（两两比较是 k²，k=20000 时 2 亿对，
+         * 而且每对还要判包含 —— 那样的词在合成图上遍地都是，命令会变成小时级）。
+         * 跳过要**明说**（返回的"跳过词数"），不能假装图上没矛盾。 */
+        if (A->count > AIP_EXCL_MAX_VALS) {     /* 出度小的词不用先数（两两比较本来就够快） */
+            size_t cnt[REL_TABLE_MAX + 2];
+            memset(cnt, 0, sizeof cnt);
+            int too_many = 0;
+            for (size_t j = 0; j < A->count && !too_many; ++j) {
+                _edges++;
+                if (_dbg && (_edges % 200000) == 0) {
+                    struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);
+                    fprintf(stderr, "[excl] 预扫 边 %zu 词 %zu/%zu A->count=%zu %ld s\n",
+                            _edges, i, ai->pool->count, A->count, (long)ts.tv_sec - _t0);
+                }
+                const AssocEntry *e1 = &token_assocs_ro(A)[j];
+                if (!e1->main || e1->main == A) continue;
+                uint8_t rid0 = 0;
+                for (uint8_t r = 1; r < REL_DYN_BASE; ++r)
+                    if (e1->rel & REL_BIT(r)) { rid0 = r; break; }
+                if (!rid0 || !rel_is_excl(ai, rid0)) continue;
+                if (rid0 <= REL_TABLE_MAX && ++cnt[rid0] > AIP_EXCL_MAX_VALS) too_many = 1;
+            }
+            if (too_many) { g_excl_skipped++; continue; }
+        }
+        for (size_t j = 0; j < A->count; ++j) {
+            _edges++;
+            if (_dbg && (_edges % 100000) == 0) {
+                struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);
+                fprintf(stderr, "[excl] 边 %zu 独占 %zu 对 %zu 冲突 %zu 词 %zu %ld s\n",
+                        _edges, _excl, pairs, n, i, (long)ts.tv_sec - _t0);
+            }
+            const AssocEntry *e1 = &token_assocs_ro(A)[j];
+            if (!e1->main || e1->main == A) continue;
+            uint8_t rid = 0;
+            for (uint8_t r = 1; r < REL_DYN_BASE; ++r)
+                if (e1->rel & REL_BIT(r)) { rid = r; break; }
+            if (!rid || !rel_is_excl(ai, rid)) continue;
+            _excl++;
+            for (size_t k = j + 1; k < A->count; ++k) {
+                const AssocEntry *e2 = &token_assocs_ro(A)[k];
+                if (!e2->main || e2->main == A || e2->main == e1->main) continue;
+                if (!(e2->rel & REL_BIT(rid))) continue;
+                /* §6.687 预算：到顶就整段停（返回值仍是"已数到的条数"，另给一个截断标志） */
+                if (++pairs > AIP_EXCL_PAIR_BUDGET) { g_excl_trunc = 1; return n; }
+                if (aip_excl_contained(ai, e1->main, e2->main)) continue;
+                if (aip_excl_contained(ai, e2->main, e1->main)) continue;
+                n++;
+                if (recs && n <= rec_cap) {
+                    recs[n - 1].a_id = A->id;
+                    recs[n - 1].b1_id = e1->main->id;
+                    recs[n - 1].b2_id = e2->main->id;
+                    recs[n - 1].rid = rid;
+                }
+                if (n <= max_want && first && cap) {
+                    size_t off = strlen(first);
+                    if (off + 8 < cap)
+                        snprintf(first + off, cap - off, "%s%s %s %s ／ %s（互不包含）",
+                                 off ? "； " : "", A->name ? A->name : "?",
+                                 rel_name_of(ai, rid), e1->main->name ? e1->main->name : "?",
+                                 e2->main->name ? e2->main->name : "?");
+                }
+            }
+        }
+    }
+    return n;
+}
+
+/* 兼容入口：只要计数 + 一句可读描述（不要结构化记录）*/
+static inline size_t aip_check_excl_conflicts(AI *ai, char *first, size_t cap, size_t max_want) {
+    return aip_check_excl_conflicts_rec(ai, first, cap, max_want, NULL, 0);
+}
+
+static inline void rel_solve(AI *ai, const Token *a, uint8_t rid, const Token *b,
+                             int want_neg, Proof *pf) {
+    if (!pf) return;
+    pf->n = 0; pf->status = 0; pf->guessed = 0; pf->guess_hops = 0;
+    if (!ai || !a || !b) return;
+    /* §6.131：整趟求解的"用了几环猜测"从这里起算、到这里抄进 Proof。
+     * ⚠ 嵌套求解（复核、候选枚举里的 rel_solve_ignoring_caches）必须自己 save/restore，
+     * 否则内层的清零会把外层已经用掉的跳数抹掉。 */
+    int save_hops = g_rel_guess_hops;
+    g_rel_guess_hops = 0;
+    rel_solve_go(ai, a, rid, b, want_neg, pf, 0, NULL, 0);
+    pf->guess_hops = g_rel_guess_hops;
+    if (pf->guess_hops > 0) pf->guessed = 1;
+    g_rel_guess_hops = save_hops + pf->guess_hops;
+}
+
+/* 把缓存（推出来沉淀的边）当成不存在，再推一遍 —— 这是「缓存跟着前提走」的复核手段。
+ * 不另存依赖表、不动存档格式：**依据就是「还能不能从图里推出来」**，
+ * 每次现算。返回 1 = 推得出确定真值。 */
+static inline int rel_solve_ignoring_caches(AI *ai, const Token *a, uint8_t rid,
+                                            const Token *b, int want_neg) {
+    if (!ai || !a || !b || rid == 0) return 0;
+    Proof pf;
+    int save_ig = g_rel_ignore_derived;    /* §6.583 嵌套复核：出来要还原成"进来时"的值 */
+    g_rel_ignore_derived = 1;
+    int save_hops = g_rel_guess_hops;      /* 复核用掉的不算外层的账（§6.131） */
+    rel_solve(ai, a, rid, b, want_neg, &pf);
+    g_rel_guess_hops = save_hops;
+    g_rel_ignore_derived = save_ig;
+    return pf.status != 0;
+}
+
+/* R5 类比推测：推不出来时，找**最像 A、并且对这件事有态度**的那个词借答案。
+ *
+ * 注意是「有态度」而不是「知道肯定」：最像的那个词也可能明确**否定**这件事
+ * （`猫 不 会 飞`），那它的意见同样有价值。所以按相似度取最近邻，
+ * 由它投赞成票还是反对票决定推测的方向 —— 这就是 k=1 的最近邻默认推理。
+ * 矛盾时由「更近的那个」说话，不做多数表决（这个规模的数据不支持）。
+ *
+ * 这是非单调推理，所以 pf->guessed 会被置上，答复里必须写明是猜的。 */
+/* **结构相似**：两个词的**关系邻居集合**有多重合（同一个宾语 + 同一位关系算一个元素）。
+ * 只看带关系位的边 —— 所以它衡量的是"**结构**像不像"，不是"用词像不像"。
+ * 这正是「结构映射式类比」与 R5（emb 最近邻）的区别：用词完全不同、但关系骨架一致
+ * （`猫 属于 动物`、`狗 属于 动物`、`猫 有 毛`、`狗 有 毛`）时，emb 可能远，结构很近。
+ * 返回 0..100；`out_common` 带回共同邻居数（调用方要用它挡掉"碰巧重合一个"）。 */
+static inline int rel_struct_sim(const Token *a, const Token *s, size_t *out_common) {
+    if (out_common) *out_common = 0;
+    if (!a || !s || a == s) return 0;
+    size_t sa = 0, ss = 0, inter = 0;
+    for (size_t i = 0; i < a->count; ++i)
+        if (token_assocs_ro(a)[i].main && (token_assocs_ro(a)[i].rel || token_assocs_ro(a)[i].nrel)) sa++;
+    for (size_t j = 0; j < s->count; ++j)
+        if (token_assocs_ro(s)[j].main && (token_assocs_ro(s)[j].rel || token_assocs_ro(s)[j].nrel)) ss++;
+    if (sa == 0 || ss == 0) return 0;
+    for (size_t i = 0; i < a->count; ++i) {
+        const AssocEntry *e = &token_assocs_ro(a)[i];
+        if (!e->main || (!e->rel && !e->nrel)) continue;
+        for (size_t j = 0; j < s->count; ++j) {
+            const AssocEntry *f = &token_assocs_ro(s)[j];
+            if (f->main != e->main) continue;
+            if ((f->rel & e->rel) || (f->nrel & e->nrel)) { inter++; break; }
+        }
+    }
+    if (out_common) *out_common = inter;
+    size_t uni = sa + ss - inter;
+    if (uni == 0) return 0;
+    return (int)((inter * 100u) / uni);
+}
+
+/* 结构类比的判据（写在**一处**）：共同关系邻居至少这么多，且结构相似度至少这么高。 */
+#define REL_STRUCT_MIN_COMMON 3
+#define REL_STRUCT_MIN_PCT    60
+
+static inline int rel_guess(AI *ai, const Token *a, uint8_t rid, const Token *b,
+                            Proof *pf) {
+    ai_embed_ensure(ai);                     /* §6.684 惰性：这一路要用 emb 余弦 */
+    /* ⚠ 原来这里硬性要求 `a->emb && b->emb` ⇒ **对话里现学的新词没有 emb**（emb 只在装载/训练时
+     * 构建）⇒ 联想引擎对新词直接罢工（症状：学了 `乙熊 属于 熊类`、`乙熊 会 冬眠` 之后，
+     * 问 `甲熊 会 冬眠 吗` 永远"不确定"）。结构/兄弟这类证据**本来就不需要 emb**：
+     * 下面用到 emb 的地方自己会判 `a->emb && s->emb` ⇒ 这里不必拦。 */
+    if (!ai || !a || !b || !pf) return 0;
+    Token *best = NULL;
+    int best_pol = 0;
+    int best_pct = REL_GUESS_SIM;              /* 门槛：低于它不算"像" */
+    /* **同上位的兄弟**（§6.117）：`a` 与某个 `s` 有共同上位 P，且 `s` 对 (rid,b) 有态度。
+     * 这比"共同关系邻居数"更硬（同为 P 的实例），但小图里共同邻居常只有 1~2 个
+     * ⇒ 以前被 `REL_STRUCT_MIN_COMMON = 3` 挡在门外（实测：甲熊/乙熊 只共 2 个邻居，
+     * 于是"甲熊 会 冬眠 吗"永远答"不确定"）。这里先算一次，循环里给它**够过门槛**的分。 */
+    const Token *sib0 = rel_sibling_with(ai, a, rid, b, NULL);
+    int best_struct = 0;                       /* 这次的依据是**结构**还是 emb */
+    for (size_t i = 0; i < ai->pool->count; ++i) {
+        Token *s = ai->pool->tokens[i];
+        if (s->is_garbage || s == a || s == b) continue;
+        if (!s->name || s->name[0] == '[') continue;
+        /* §6.570 局部加载：这条扫描要为**每个**词查态度 ⇒ 不设限会把整图读回来
+         * （实测 1265 段）。只扫已在内存的词：结构依据变少，但**不假装"读过全图"**。 */
+        if (!token_assocs_resident(s)) continue;
+        int pol = 0;
+        int hy = 0;
+        if (rel_direct(s, rid, b) || rel_direct_h(ai, s, rid, b, &hy)) pol = +1;
+        else if (rel_direct_neg(s, rid, b) || rel_direct_neg_h(ai, s, rid, b, &hy)) pol = -1;
+        if (!pol) continue;                          /* 它得对这件事有态度 */
+        /* 两条候选来源，取更像的那个：
+         *   ① emb 余弦（用词/语境像）—— 需要两边都有 emb；
+         *   ② **结构相似**（关系骨架像）—— 用词可以完全不同，这是结构映射式类比。 */
+        int pct = -1, is_struct = 0;
+        if (a->emb && s->emb) {
+            double c = (double)emb_cosine(a->emb, s->emb);
+            if (c * 100.0 > pct) { pct = (int)(c * 100.0); is_struct = 0; }
+        }
+        {
+            size_t common = 0;
+            int st = rel_struct_sim(a, s, &common);
+            if (st >= REL_STRUCT_MIN_PCT && common >= REL_STRUCT_MIN_COMMON && st > pct) {
+                pct = st;
+                is_struct = 1;
+            }
+        }
+        if (sib0 && s == sib0 && pct < REL_STRUCT_MIN_PCT) {
+            /* 兄弟这条证据：直接给到结构门槛分（不再要求共同邻居 ≥3） */
+            pct = REL_STRUCT_MIN_PCT; is_struct = 1;
+        }
+        if (pct > best_pct || (pct == best_pct && is_struct && !best_struct)) {
+            best_pct = pct; best = s; best_pol = pol; best_struct = is_struct;
+        }
+    }
+    if (!best) return 0;
+    pf->n = 0;
+    pf->status = best_pol;
+    pf->guessed = 1;
+    pf->guess_hops = 1;                     /* §6.131：一次直接类比 = 一环猜测 */
+    proof_push(pf, (Token *)a, 0, 0, 0, 0);
+    proof_push(pf, best, rid, 0, 5, best_pct);
+    proof_push(pf, (Token *)b, rid, (uint8_t)(best_pol < 0), 0, 0);
+    return 1;
+}
+
+/* 把推导链渲染成一行，带**关系标签**（不只是词）：
+ *   猫 -[属于·传递]-> 动物 -[有]-> 毛
+ * 这一步很重要：只有词的话看不出每一跳是靠哪条规则、哪个关系走的。 */
+static inline void proof_text(const AI *ai, const Proof *pf, char *out, size_t cap) {
+    if (!out || cap == 0) return;
+    out[0] = 0;
+    if (!pf || pf->n == 0) return;
+    size_t off = 0;
+    for (size_t i = 0; i < pf->n; ++i) {
+        const ProofStep *s = &pf->step[i];
+        const char *nm = (s->tok && s->tok->name) ? s->tok->name : "?";
+        int w;
+        if (i == 0) {
+            w = snprintf(out + off, cap - off, "%s", nm);
+        } else {
+            const char *rn = rel_name_of(ai, s->rel);
+            if (!rn) rn = "?";
+            if (s->via == 5) {
+                w = snprintf(out + off, cap - off, " ≈（%d%% 像）≈> %s", s->sim, nm);
+            } else if (s->via == 10 || s->via == 11) {
+                /* 前提这一跳没有关系词：读作 `A -[前提]-> P` / `A -[前提不]-> P` */
+                w = snprintf(out + off, cap - off, " -[%s]-> %s", rel_via_name(s->via), nm);
+            } else if (s->via == 0) {
+                w = snprintf(out + off, cap - off, " -[%s%s]-> %s",
+                             s->neg ? "不 " : "", rn, nm);
+            } else {
+                /* §6.204 **极性也要打**：R9「缺前提 → 否定能力」推出来的那一步是**否定**，
+                 * 以前只打 `-[会·缺前提]-> 唱歌`（读起来像"猫会唱歌"）⇒ 报告"互相矛盾的依据"时
+                 * 另一条链看着跟正面一模一样（实测把自己都绕晕）。 */
+                w = snprintf(out + off, cap - off, " -[%s%s·%s]-> %s",
+                             s->neg ? "不 " : "", rn, rel_via_name(s->via), nm);
+            }
+        }
+        if (w < 0 || (size_t)w >= cap - off) { off = cap - 1; break; }
+        off += (size_t)w;
+    }
+    out[off < cap ? off : cap - 1] = 0;
+}
+
+/* ---------------------------------------------------------------- 句形识别 */
+
+static inline int rel_is_qmark(const char *w) {
+    if (!w) return 0;
+    return strcmp(w, "吗") == 0 || strcmp(w, "呢") == 0 ||
+           strcmp(w, "么") == 0 || strcmp(w, "吧") == 0 || strcmp(w, "?") == 0 ||
+           strcmp(w, "？") == 0;
+}
+
+/* 正好一个汉字、而且是实词。虚词检查极要紧：`你 吃 火锅 了 吗` 里 `了`
+ * 也是单字，不管它就会把宾语拼成 `火锅了`，解析器凭空造出垃圾符号节点（踩过）。 */
+static inline int rel_one_cjk(const char *s) {
+    if (!s) return 0;
+    if (strlen(s) != 3 || ((unsigned char)s[0] & 0xF0) != 0xE0) return 0;
+    return !fr_is_func(s);
+}
+
+/* §6.163 **量词**：`猫 是 一种 动物` 里的 `一种`（也收常见的 一类/一个/个/只/种…）。
+ * 它后面那个词才是真正的宾语；不剥掉的话，形状判定会因为它"不是单字实词"整句拒掉
+ * （实测 `猫 是 一种 动物 吗` ⇒「这个我 不 太 懂」）。**只在 `是/属于` 后面剥**，
+ * 且只在开关打开时剥（`ai->rel_nat`，"自然说法"那一档）。 */
+static inline int rel_is_classifier(const char *w) {
+    if (!w) return 0;
+    static const char *const cls[] = { "一种", "一类", "一个", "一样", "个", "只", "种", "样", NULL };
+    for (size_t i = 0; cls[i]; ++i)
+        if (strcmp(w, cls[i]) == 0) return 1;
+    return 0;
+}
+
+/* §6.592 **数量宾语里的常见度量词**（`三 条 腿` / `五 头 牛`）：和 §6.164 剥量词用的
+ * `rel_is_classifier` 分开 —— 那条判据只认"一种/个/只/种/样"，改它会动到既有形状判定。
+ * 这里只用于"宾语是 数词+量词+名词"的**放行**判断。 */
+static inline int rel_is_measure_extra(const char *w) {
+    if (!w) return 0;
+    static const char *const m[] = { "条", "头", "匹", "张", "件", "台", "把", "根", "片",
+                                     "块", "双", "对", "群", "些", "斤", "米", "岁", "次",
+                                     "天", "年", "月", "日", "度", "元", "名", "位", "步",
+                                     "层", "间", "本", "支", "枝", "颗", "粒", "滴", "杯",
+                                     "碗", "盘", "句", "声", "遍", "趟", "场", "份", "套",
+                                     NULL };
+    for (size_t i = 0; m[i]; ++i) if (!strcmp(w, m[i])) return 1;
+    return 0;
+}
+
+/* §6.164 **数词**（`一 只 猫` 里的 `一`）—— 和量词一起剥。只收最常见的几个。 */
+static inline int rel_is_numeral(const char *w) {
+    if (!w) return 0;
+    return !strcmp(w, "一") || !strcmp(w, "两") || !strcmp(w, "二") ||
+           !strcmp(w, "三") || !strcmp(w, "几") || !strcmp(w, "半");
+}
+
+/* §6.592 **数量宾语蕴含属性**：`A 有 三个角` 存的宾语是「三个角」⇒「A 有 角」也为真。
+ * 判据：宾语名以 B 结尾，前缀是 **数词 + 量词**（`三个`/`四条`）。
+ * ⚠ 量词必须在表里：`猫 有一身毛` 的「身」不算量词 ⇒ 不会推出「猫 有 毛」
+ *   （试过"只看数词开头"，把"猫 有 毛 是缓存"那个推理沉淀套件的前提打破了）。 */
+static inline int token_has_attr_quantity(const Token *A, const Token *B) {
+    if (!A || !B || !B->name || !B->name[0]) return 0;
+    size_t bl = strlen(B->name);
+    uint16_t bit = REL_BIT(REL_HAS);
+    for (size_t i = 0; i < A->count; ++i) {
+        const AssocEntry *e = &token_assocs_ro(A)[i];
+        if (!(e->rel & bit) || !e->main || !e->main->name) continue;
+        /* §6.592 只认**观测到的**数量边：推论沉淀出来的（DERIVED）/记忆猜测不算依据 ——
+         * 否则复核模式（`rel_solve_ignoring_caches`）会拿"缓存自己"证明"缓存还有依据"，
+         * 于是该撤的缓存撤不掉（推理沉淀套件当场红）。 */
+        if (e->role == ASSOC_ROLE_DERIVED || edge_is_guess(e)) continue;
+        const char *o = e->main->name;
+        if (!strcmp(o, B->name)) return 1;
+        size_t ol = strlen(o);
+        if (ol <= bl || strcmp(o + ol - bl, B->name) != 0) continue;
+        size_t num = 0;
+        while (num + 3 <= ol - bl) {
+            char ch[4] = { o[num], o[num + 1], o[num + 2], 0 };
+            if (!rel_is_numeral(ch)) break;
+            num += 3;
+        }
+        if (num == 0 || ol - bl == num) continue;
+        char mea[16] = {0};
+        size_t ml = ol - bl - num;
+        if (ml >= sizeof mea) continue;
+        memcpy(mea, o + num, ml);
+        if (!rel_is_classifier(mea) && !rel_is_measure_extra(mea)) continue;
+        return 1;
+    }
+    return 0;
+}
+
+/* §6.164 **`是/属于 + [数词] 量词 + 宾语`**：返回宾语真正的起点（没剥就返回 ri+1）。
+ * 形状判定和宾语拼装**共用这一处** —— 分开写迟早会不一致（§6.163 就是先只改了形状）。 */
+static inline size_t rel_obj_start(char *const *words, size_t last, size_t ri, int nat) {
+    size_t ob = ri + 1;
+    if (!nat || ob >= last) return ob;
+    if (strcmp(words[ri], "是") != 0 && strcmp(words[ri], "属于") != 0) return ob;
+    size_t k = ob;
+    if (k < last && rel_is_numeral(words[k])) ++k;
+    if (k < last && k > ob && rel_is_classifier(words[k])) return k + 1;   /* 数词 + 量词 */
+    if (k == ob && k < last && rel_is_classifier(words[k])) return k + 1;  /* 只有量词 */
+    return ob;
+}
+
+
+/* 先只验**形状**、完全不碰关系表：
+ *   `<主语> [不] <谓语词> <宾语…> [吗]`，主语 1 个词、谓语 1 个词、
+ *   宾语 1 个词或 2~4 个单字实词。
+ * 存在的意义：登记新谓语是**有副作用**的，不能先登记再发现形状不对 ——
+ * 实测「你 觉得 天气 怎么样」会因此把「觉得」登记成动态关系（还写进模型）。 */
+static inline int rel_shape_ok2(char *const *words, size_t n, int nat) {
+    if (!words || n < 3 || n > 6) return 0;
+    size_t last = n;
+    if (rel_is_qmark(words[n - 1])) last = n - 1;
+    if (last < 3) return 0;
+    if (!words[0][0] || words[0][0] == '[') return 0;
+    size_t ri = 1;
+    if (last >= 4 && strcmp(words[1], "不") == 0) ri = 2;
+    if (ri >= last) return 0;
+    size_t nobj = last - ri - 1;
+    if (nobj == 0) return 0;
+    /* §6.163/§6.164 `是/属于 + [数词] 量词 + 宾语`：剥掉再看（只在"自然说法"开关打开时）*/
+    size_t ob = rel_obj_start(words, last, ri, nat);
+    nobj = last - ob;
+    if (nobj > 4) return 0;
+    if (nobj == 1) return words[ob][0] != '[';
+    for (size_t i = ob; i < last; ++i)
+        if (!rel_one_cjk(words[i])) return 0;
+    return 1;
+}
+/* 老签名（不带开关）：保持给不认识 `ai` 的地方用 —— 语义 = 不剥量词。 */
+static inline int rel_shape_ok(char *const *words, size_t n) {
+    return rel_shape_ok2(words, n, 0);
+}
+
+/* 解析 `<主语> [不] <关系词> <宾语…> [吗]`。
+ * 主语固定第 0 个词；`不` 可选；宾语可由多个单字拼回一个词（宠物 → 宠+物）。
+ * 拼好的宾语写进 buf，*bw 指向 buf。 */
+static inline int rel_parse(AI *ai, char *const *words, size_t n,
+                            char *buf, size_t bufsz,
+                            const char **aw, uint8_t *rid, int *neg,
+                            const char **bw, int *is_q, const char **rel_word,
+                            int allow_new) {
+    if (!ai || !words || n < 3) return 0;
+    size_t last = n;
+    int q = 0;
+    if (rel_is_qmark(words[n - 1])) { q = 1; last = n - 1; }
+    if (last < 3) return 0;
+    if (!words[0][0] || words[0][0] == '[') return 0;
+
+    size_t ri = 1;                        /* 关系词的位置 */
+    int is_neg = 0;
+    if (last >= 4 && (strcmp(words[1], "不") == 0 || strcmp(words[1], "没") == 0)) { is_neg = 1; ri = 2; }
+    /* 「没有」是「有」的否定形式，而且它是**一个词**：
+     *   `猫 没有 声带` = 猫 -[不 有]-> 声带，而不是「猫 没有 X」三个词。
+     * 不认它的话，「缺前提」那类事实就没法从对话里说进来（实测）。 */
+    if (!is_neg && last == 3 && ri == 1 &&
+        (strcmp(words[1], "没有") == 0 || strcmp(words[1], "没") == 0)) {
+        /* 只接受**正好一个宾语词**：多的词宁可整句不认，也不能悄悄丢掉
+         * （静默丢词会学出「鱼 不 有 声」这种半截事实）。 */
+        is_neg = 1; ri = 2;
+        if (aw) *aw = words[0];
+        uint8_t hid = rel_id_of(ai, "有", 0);
+        if (!hid) return 0;
+        if (bw) *bw = words[ri];
+        if (rid) *rid = hid;
+        if (neg) *neg = 1;
+        if (rel_word) *rel_word = words[1];
+        if (is_q) *is_q = q;
+        return 1;
+    }
+    if (ri >= last) return 0;
+    uint8_t id = 0;
+    const char *merged_name = NULL;   /* 合写时：那个符号节点里**已经含**否定了，别再拼一遍 */
+    /* 「不 X」/「没 X」：先看**拼起来**是不是情态说法（`不能`/`没法`/`不敢` —— 分词器把
+     * 它们切成两个词，所以得拼回去查那张表）；再看 X 是不是关系词。
+     * 顺序要紧：先查表再 `rel_id_of(..., allow_new)`，否则「能」会被当场登记成动态谓语。 */
+    if (is_neg && ri == 2 && words[ri]) {
+        char jw[40];
+        snprintf(jw, sizeof jw, "%s%s", words[1], words[ri]);
+        const RelModalRow *mr = rel_modal_of(jw);
+        if (mr) {
+            uint8_t r2 = rel_id_of(ai, mr->rel, 0);
+            if (r2) {
+                id = r2;
+                is_neg = mr->neg;
+                merged_name = rel_name_of(ai, r2);
+            }
+        }
+    }
+    if (!is_neg) {
+        /* 合写否定（`不会`/`不喜欢`/`不是`）：**一个符号节点就是「否定 + 关系」** ——
+         * 与两词写法共用同一份声明（`rel_merged_neg_id` 去空格比）。 */
+        uint8_t mid = 0;
+        if (rel_merged_neg_id(words[1], &mid)) {
+            is_neg = 1;
+            id = mid;
+            { const RelDef *mrd = rel_by_id(mid); merged_name = mrd ? mrd->name : NULL; }
+        } else if (rel_modal_of(words[1])) {
+            /* 情态写法（`不能`/`没法`/…）：归到那张表上的 (关系, 否定) */
+            const RelModalRow *mr = rel_modal_of(words[1]);
+            uint8_t rid2 = rel_id_of(ai, mr->rel, 0);
+            if (rid2 == 0) return 0;
+            id = rid2;
+            is_neg = mr->neg;
+            merged_name = rel_name_of(ai, rid2);
+        } else {
+            id = rel_id_of(ai, words[ri], allow_new);
+        }
+    } else if (!id) {
+        id = rel_id_of(ai, words[ri], allow_new);
+    }
+    if (!id) return 0;
+    if (!id) return 0;
+
+    size_t nobj = last - ri - 1;
+    if (nobj == 0) return 0;
+    size_t ob = rel_obj_start(words, last, ri, ai->rel_nat);   /* §6.163/§6.164 共用一处 */
+    nobj = last - ob;
+    if (nobj == 1) {
+        if (words[ob][0] == '[') return 0;
+        if (bw) *bw = words[ob];
+    } else {
+        if (nobj > 4) return 0;
+        size_t bl = 0;
+        for (size_t i = ob; i < last; ++i) {
+            if (!rel_one_cjk(words[i])) return 0;
+            size_t l = strlen(words[i]);
+            if (bl + l + 1 > bufsz) return 0;
+            memcpy(buf + bl, words[i], l);
+            bl += l;
+        }
+        buf[bl] = 0;
+        if (bw) *bw = buf;
+    }
+    if (aw) *aw = words[0];
+    if (rid) *rid = id;
+    if (neg) *neg = is_neg;
+    if (rel_word) *rel_word = merged_name ? merged_name : words[ri];
+    if (is_q) *is_q = q;
+    return 1;
+}
+
+#endif /* REL_H */
