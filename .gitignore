@@ -53,3 +53,4 @@ __pycache__/
 
 # 蒸馏原始输出（可复查，但不必进 git；产物见表与本文件）
 distill/raw_*.txt
+build_xe
