@@ -34,7 +34,22 @@ REQS = [
     dict(name="二进制回文", desc="读入一个整数（命令行参数），判断它的二进制表示是否回文（输出 yes 或 no）。",
          key="二进制表示是否回文", examples=[(5, "yes"), (6, "no"), (1, "yes")],
          props=["yesno"]),
+    dict(name="数组次大值", desc="读入一行整数（标准输入），输出第二大的数。",
+         key="第二大的数", kind="arr", examples=[("5 9 1 7\n", "7"), ("3 3 1\n", "1")],
+         props=["range"]),
+    dict(name="数组是否对称", desc="读入一行整数（标准输入），判断数组是否对称（输出 yes 或 no）。",
+         key="数组是否对称", kind="arr", examples=[("1 2 1\n", "yes"), ("1 2\n", "no")],
+         props=["yesno"]),
+    dict(name="单词个数", desc="读入一行字符串（标准输入），输出单词的个数。",
+         key="单词的个数", kind="str", examples=[("a b c\n", "3"), ("hi\n", "1")],
+         props=["range"]),
+    dict(name="字符串压缩", desc="读入一行字符串（标准输入），把连续重复的字符压缩成字符+次数（输出压缩后的串）。",
+         key="连续重复的字符压缩", kind="str", examples=[("aaabb\n", "a3b2"), ("abc\n", "abc")],
+         props=[]),
 ]
+
+def kind_of(req):
+    return req.get("kind", "argv")
 
 def clean(s):
     out = [ln.rstrip() for ln in s.replace("\r", "").split("\n") if not re.match(r"^(ok|FAIL)\b", ln)]
@@ -60,10 +75,15 @@ def compile_prog(src_text, tag):
                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     return exe if cc.returncode == 0 else None
 
-def run(exe, n):
+def run_case(exe, req, case):
+    """按需求类型跑一个用例：argv / 数组 stdin / 字符串 stdin"""
     try:
-        p = subprocess.run([exe, str(n)], stdout=subprocess.PIPE,
-                           stderr=subprocess.STDOUT, timeout=10)
+        if kind_of(req) == "argv":
+            p = subprocess.run([exe, str(case)], stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT, timeout=10)
+        else:
+            p = subprocess.run([exe], input=str(case).encode(), stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT, timeout=10)
         return clean(p.stdout.decode("utf-8", "replace"))
     except subprocess.TimeoutExpired:
         return None
@@ -71,13 +91,18 @@ def run(exe, n):
 def verify(exe, req, rng):
     """示例 + 性质 + 稳定：返回 (ok, 说明)"""
     import random
-    for n, want in req["examples"]:
-        got = run(exe, n)
+    for case, want in req["examples"]:
+        got = run_case(exe, req, case)
         if got != want:
-            return False, f"示例 {n} 得到 {got!r} 期望 {want!r}"
+            return False, f"示例 {case!r} 得到 {got!r} 期望 {want!r}"
     for _ in range(20):
-        n = rng.randint(1, 200)
-        a, b = run(exe, n), run(exe, n)
+        if kind_of(req) == "arr":
+            case = " ".join(str(rng.randint(-9, 9)) for _ in range(rng.randint(1, 6))) + "\n"
+        elif kind_of(req) == "str":
+            case = "".join(rng.choice("aabbc") for _ in range(rng.randint(1, 8))) + "\n"
+        else:
+            case = rng.randint(1, 200)
+        a, b = run_case(exe, req, case), run_case(exe, req, case)
         if a is None or a != b:
             return False, "不稳定/超时"
         if req["props"] == ["range"] and not re.fullmatch(r"-?\d+", a or ""):
@@ -86,16 +111,25 @@ def verify(exe, req, rng):
             return False, f"输出不是 yes/no：{a!r}"
     return True, "示例+性质+稳定 全过"
 
-def wrap(func_src, fname):
-    """把候选函数包成完整程序（模板:命令行整数 的语义）；按返回类型选打印格式。"""
-    ret_str = ("const char" in func_src and "*" in func_src.split("(")[0]) or "char *" in func_src.split("(")[0]
-    pf = "%s" if ret_str else "%ld"
-    fmt = '"' + pf + '\\n"'
-    return ("#include <stdio.h>\n#include <stdlib.h>\n"
+def _ret_is_str(func_src):
+    head = func_src.split('(')[0]
+    return 'char' in head and '*' in head
+
+def wrap(func_src, fname, req):
+    """把候选函数包成完整程序：argv / 数组 stdin / 字符串 stdin 三种形态。"""
+    fmt = '"%s\\n"' if _ret_is_str(func_src) else '"%ld\\n"'
+    k = kind_of(req)
+    if k == 'arr':
+        call, decl = f'{fname}(v, n)', 'long v[64]; int n = 0; while (n < 64 && scanf("%ld", &v[n]) == 1) n++;'
+    elif k == 'str':
+        call, decl = f'{fname}(s)', 'char s[256] = ""; if (fgets(s, sizeof s, stdin)) {}'
+    else:
+        call, decl = f'{fname}(n)', 'long n = argc > 1 ? atol(argv[1]) : 10;'
+    return ("#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n"
             + func_src.rstrip() + "\n"
             + "int main(int argc, char **argv) {\n"
-            + "    long n = argc > 1 ? atol(argv[1]) : 10;\n"
-            + "    printf(" + fmt + ", " + fname + "(n));\n"
+            + "    " + decl + "\n"
+            + "    printf(" + fmt + ", " + call + ");\n"
             + "    return 0;\n}\n")
 
 def try_sources(req):
@@ -116,7 +150,7 @@ def try_sources(req):
     paths = sorted(glob.glob(os.path.join(CORPUS, "*.c"))) + sorted(glob.glob(os.path.join(CORPUS_REPO, "*.c")))
     for path in paths:
         text = open(path, encoding="utf-8", errors="replace").read()
-        for m in re.finditer(r"(static\s+)?(?:long|const\s+char\s*\*|char\s*\*)\s*(\w+)\s*\(\s*long\s+\w+\s*\)\s*\{", text):
+        for m in re.finditer(r"(static\s+)?(?:long|const\s+char\s*\*|char\s*\*)\s*(\w+)\s*\(\s*(?:long\s+\w+|const\s+long\s*\*\s*\w+\s*,\s*int\s+\w+|const\s+char\s*\*\s*\w+)\s*\)\s*\{", text):
             start = m.start()
             depth = 0; i = text.find("{", start)
             j = i
@@ -186,7 +220,7 @@ def main():
         cands = try_sources(req)
         got = False
         for src_name, func_src, fname in cands:
-            prog = wrap(func_src, fname)
+            prog = wrap(func_src, fname, req)
             exe = compile_prog(prog, req["name"] + "_cand")
             if not exe:
                 continue
