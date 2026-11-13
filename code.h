@@ -431,6 +431,68 @@ static inline Token *code_pick_template(AI *ai, Token *tmpl, const char *desc) {
     return tmpl;
 }
 
+/* §6.805 片段依赖判据：**真正的调用点**才算依赖。
+ * 旧判据是裸子串（strstr），把注释/字符串/更长的标识符都算进去：
+ * sort 会被 qsort( 命中、max 会被 maxv 命中 ⇒ 假依赖；
+ * 而 "foo ("（名字和括号之间有空格）又漏掉 ⇒ 漏依赖。
+ * 这里要求：前面不是标识符字符、名字之后（跳过空白）紧跟 (。 */
+static inline int code_calls(const char *code, const char *name) {
+    if (!code || !name || !name[0]) return 0;
+    size_t nl = strlen(name);
+    for (const char *p = code; (p = strstr(p, name)) != NULL; p += nl) {
+        int prev_ok = (p == code) ||
+                      !((p[-1] >= 97 && p[-1] <= 122) || (p[-1] >= 65 && p[-1] <= 90) ||
+                        (p[-1] >= 48 && p[-1] <= 57) || p[-1] == 95);
+        if (!prev_ok) continue;
+        /* 后面也必须是标识符边界：这样 `qsort` 不会命中 `sort`，
+         * 而 `qsort(..., cmp_long)`（当函数指针传）仍然算依赖。 */
+        char nxt = p[nl];
+        int next_ok = !((nxt >= 97 && nxt <= 122) || (nxt >= 65 && nxt <= 90) ||
+                        (nxt >= 48 && nxt <= 57) || nxt == 95);
+        if (next_ok) return 1;
+    }
+    return 0;
+}
+
+/* 拓扑排序：0 = 排好（fcodes/fnames 原地重排）；-1 = 成环（note 写原因）。 */
+static inline int code_order_pieces(const char **fcodes, const char **fnames, int nf,
+                                    char *note, size_t cap) {
+    if (nf <= 1) return 0;
+    int dep[CODE_MAX_PIECES][CODE_MAX_PIECES];
+    memset(dep, 0, sizeof dep);
+    for (int i = 0; i < nf; ++i) {
+        for (int j = 0; j < nf; ++j) {
+            if (i == j) continue;
+            const char *need_j = fnames[j];
+            const char *cj = need_j ? strrchr(need_j, 58) : NULL;   /* 冒号 */
+            if (cj && cj[1]) need_j = cj + 1;
+            if (!need_j || !need_j[0]) continue;
+            if (code_calls(fcodes[i], need_j)) dep[i][j] = 1;   /* i 依赖 j ⇒ j 先 */
+        }
+    }
+    int done[CODE_MAX_PIECES];
+    memset(done, 0, sizeof done);
+    const char *oc[CODE_MAX_PIECES], *on[CODE_MAX_PIECES];
+    int k = 0;
+    while (k < nf) {
+        int pick = -1;
+        for (int i = 0; i < nf && pick < 0; ++i) {
+            if (done[i]) continue;
+            int ready = 1;
+            for (int j = 0; j < nf; ++j)
+                if (!done[j] && dep[i][j]) { ready = 0; break; }
+            if (ready) pick = i;
+        }
+        if (pick < 0) {
+            if (note && cap) snprintf(note, cap, "片段依赖成环（%d 个片段），排序不出来 ⇒ 不拼", nf);
+            return -1;
+        }
+        done[pick] = 1;
+        oc[k] = fcodes[pick]; on[k] = fnames[pick]; k++;
+    }
+    for (int i = 0; i < nf; ++i) { fcodes[i] = oc[i]; fnames[i] = on[i]; }
+    return 0;
+}
 /* §6.712 发射：模板（含 <SLOTS>）+ 片段 + 主体 ⇒ 写 synth_<outbase>.c、编、跑。
  * head 是给 note 的前缀（已经带上 "→ "）；C 里不点任何任务/配方名。 */
 static inline int code_emit(AI *ai, Token *tmpl, const char *bodytext,
@@ -453,20 +515,10 @@ static inline int code_emit(AI *ai, Token *tmpl, const char *bodytext,
     char *buf = (char *)malloc(CODE_SRC_CAP);
     if (!buf) { if (note && cap) snprintf(note, cap, "内存不够"); return -2; }
     size_t len = 0;
-    /* 片段依赖排序：被调用的排前面（冒泡松弛；成环就放弃）。 */
-    for (int pass = 0; pass < nf; ++pass) {
-        int moved = 0;
-        for (int i = 0; i + 1 < nf; ++i) {
-            const char *need = fnames[i + 1];
-            const char *colon = strrchr(need, ':');
-            if (colon && colon[1]) need = colon + 1;
-            if (need[0] && strstr(fcodes[i], need)) {
-                const char *tc = fcodes[i]; fcodes[i] = fcodes[i + 1]; fcodes[i + 1] = tc;
-                const char *tn = fnames[i]; fnames[i] = fnames[i + 1]; fnames[i + 1] = tn;
-                moved = 1;
-            }
-        }
-        if (!moved) break;
+    /* §6.805 片段依赖排序：按**调用点**判依赖，拓扑排序，成环就明说（不再静默凑合）。 */
+    if (code_order_pieces(fcodes, fnames, nf, note, cap) != 0) {
+        free(buf);
+        return -2;
     }
     for (int i = 0; i < nf; ++i) {
         int n = snprintf(buf + len, CODE_SRC_CAP - len, "%s\n", fcodes[i]);
@@ -527,6 +579,11 @@ static inline int code_compose(AI *ai, Token *job, const char *desc, char *note,
     const char *fcodes[CODE_MAX_PIECES];
     const char *fnames[CODE_MAX_PIECES];
     int nf = 0;
+    int n_use = 0;                    /* 用 边总数（用于报告"超过 16 个被截断"）*/
+    for (size_t j = 0; j < job->count; ++j) {
+        const AssocEntry *e = &token_assocs_ro(job)[j];
+        if (e->main && e->dyn == d_use) n_use++;
+    }
     for (size_t j = 0; j < job->count && nf < CODE_MAX_PIECES; ++j) {
         const AssocEntry *e = &token_assocs_ro(job)[j];
         if (!e->main || e->dyn != d_use) continue;
@@ -541,9 +598,14 @@ static inline int code_compose(AI *ai, Token *job, const char *desc, char *note,
         nf++;
     }
     char hd[224];
-    snprintf(hd, sizeof hd, "%s：%d 个片段 + 模板 %s + 主体（%s %s）→ ",
-             kind ? kind : "组合", nf, tmpl->name ? tmpl->name : "?",
-             kind ? kind : "组合", job->name);
+    if (n_use > CODE_MAX_PIECES)
+        snprintf(hd, sizeof hd, "%s：片段 %d 个（上限 %d，**只拼前 %d 个**）+ 模板 %s + 主体（%s %s）→ ",
+                 kind ? kind : "组合", n_use, CODE_MAX_PIECES, CODE_MAX_PIECES,
+                 tmpl->name ? tmpl->name : "?", kind ? kind : "组合", job->name);
+    else
+        snprintf(hd, sizeof hd, "%s：%d 个片段 + 模板 %s + 主体（%s %s）→ ",
+                 kind ? kind : "组合", nf, tmpl->name ? tmpl->name : "?",
+                 kind ? kind : "组合", job->name);
     return code_emit(ai, tmpl, body->name, fcodes, fnames, nf, job->name + 7, hd, note, cap);
 }
 /* §6.712 运算链：描述里出现 ≥2 个 运算:* 的关键词 ⇒ 按出现先后拼成

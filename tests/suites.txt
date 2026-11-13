@@ -264,3 +264,4 @@ english|sh tests/english.sh
 # 联网关着必须拒绝。不联网（live 只做手工记录，见 docs/web.md）。
 web|sh tests/web.sh
 xe|sh tests/xe.sh
+codedep|gcc -std=c11 -O2 -Wall -Wextra -Werror -o build_codetest_dep tools/codetest_dep.c -lm && ./build_codetest_dep
