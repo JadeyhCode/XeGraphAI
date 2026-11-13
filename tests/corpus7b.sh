@@ -123,7 +123,28 @@ printf '::parts corpus %s\n::quit\n' "$WORK/trunc.c7b" | ./build_aip --model m.b
 printf '::parts corpus %s\n::quit\n' "$WORK/m.bin" | ./build_aip --model m.bin 2>&1 | grep -qa '打不开' \
     && ok "非 C7B 文件（model.bin）被拒" || bad "非 C7B 文件居然打开了" ""
 
-echo
+
+echo "== ⑥ 跨分片查询（路线 B 第一小步：union） =="
+# 两片同一词表（种子不同）：同一个词在两片都有事实 ⇒ union 必须**两片都扫到**且去重。
+sh "$ROOT/tools/gen_corpus7b.sh" 400000 200000 50000 "$WORK/u" 21 > "$WORK/gen_u.log" 2>&1 || true
+printf '::parts corpus union w000042 %s/u\n::quit\n' "$WORK" | ./build_aip --model m.bin > u.out 2>&1
+_scan=$(sed -n 's/.*扫 \([0-9]*\) 片.*/\1/p' u.out | head -1)
+_hit=$(sed -n 's/.*片，\([0-9]*\) 片有事实.*/\1/p' u.out | head -1)
+_uniq=$(sed -n 's/.*去重后 \([0-9]*\) 条.*/\1/p' u.out | head -1)
+if [ "${_scan:-0}" -ge 2 ] && [ "${_hit:-0}" -ge 2 ] && [ "${_uniq:-0}" -gt 0 ]; then
+    ok "跨片 union：扫 ${_scan} 片、${_hit} 片有事实、去重后 ${_uniq} 条"
+else
+    bad "跨片 union 没扫到两片（扫 ${_scan:-?} / 命中 ${_hit:-?} / 去重 ${_uniq:-?}）" "$(head -3 u.out | tr '\n' ' ')"
+fi
+# union 的去重条数必须 ≥ 单片条数（合并只会更多，不会更少）
+printf '::parts corpus %s/a/shard_001.c7b\n::parts corpus rel w000042\n::parts corpus close\n::quit\n' "$WORK" | ./build_aip --model m.bin > u1.out 2>&1
+_one=$(grep -ac -- "w000042 --\[" u1.out || true)
+if [ "${_uniq:-0}" -ge "${_one:-0}" ] && [ "${_one:-0}" -gt 0 ]; then
+    ok "union 去重条数（${_uniq}）≥ 单片条数（${_one}）"
+else
+    bad "union 比单片还少（union ${_uniq:-?} / 单片 ${_one:-?}）" ""
+fi
+
 printf '语料分片：通过 %d / 失败 %d\n' "$pass" "$fail"
 [ "$fail" -eq 0 ] && printf 'PASS corpus7b（确定性 + 自洽 + 续跑 + 引擎可挂可查 + 坏文件拒）\n' || printf 'FAIL corpus7b\n'
 [ "$fail" -eq 0 ]

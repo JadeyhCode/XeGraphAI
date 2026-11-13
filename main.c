@@ -3155,6 +3155,63 @@ int main(int argc, char **argv) {
                         printf("[语料] 扫了 %d 片：%d 片有「%s」的事实（合计 %d 条）\n", nshard, nhit, name, nf);
                         continue;
                     }
+                    if (!strcmp(act, "union")) {
+                        /* §6.808 **跨分片查询（路线 B 的第一小步）**：
+                         * 同一个词在多个 .c7b 分片里可能都有事实 —— 逐片查、按 (关系,对象) 去重后合并。
+                         * 这**不是**"一张单图"（图没合并），但"跨片看得全"这一步是路线 B 的前置。
+                         * 用法：::parts corpus union w000042 <分片目录> */
+                        char dirpath[256] = {0};
+                        const char *name = arg;
+                        size_t kk = 0;
+                        while (*q == ' ') q++;
+                        while (*q && *q != ' ' && kk + 1 < sizeof dirpath) dirpath[kk++] = *q++;
+                        dirpath[kk] = 0;
+                        unsigned wid = 0;
+                        if (!name[0] || !dirpath[0] || sscanf(name, "w%u", &wid) != 1) {
+                            printf("[用法] ::parts corpus union w000042 <分片目录>\n");
+                            continue;
+                        }
+                        DIR *dp2 = opendir(dirpath);
+                        if (!dp2) { printf("[语料] 打不开目录：%s\n", dirpath); continue; }
+                        struct { uint16_t rel; uint32_t obj; const char *shard; } uniq[256];
+                        int nu = 0, nshard = 0, nhit = 0;
+                        size_t total_edges = 0;
+                        struct dirent *de2;
+                        while ((de2 = readdir(dp2)) != NULL) {
+                            size_t L2 = strlen(de2->d_name);
+                            if (L2 < 5 || strcmp(de2->d_name + L2 - 4, ".c7b") != 0) continue;
+                            char pp2[512];
+                            snprintf(pp2, sizeof pp2, "%s/%s", dirpath, de2->d_name);
+                            char e3[160] = {0};
+                            C7B *c3 = c7b_open(pp2, e3, sizeof e3);
+                            if (!c3) continue;
+                            nshard++;
+                            uint64_t off2 = 0; uint32_t cnt2 = 0;
+                            if (c3->ver == 1 && c7b_find(c3, wid, &off2, &cnt2) == 0 && cnt2) {
+                                C7BEdge es[64];
+                                int got = c7b_read(c3, off2, cnt2, es, 64);
+                                nhit++;
+                                total_edges += (size_t)(got > 0 ? got : 0);
+                                for (int i = 0; i < got && nu < 256; ++i) {
+                                    int dup = 0;
+                                    for (int k2 = 0; k2 < nu; ++k2)
+                                        if (uniq[k2].rel == es[i].rel && uniq[k2].obj == es[i].b_id) { dup = 1; break; }
+                                    if (dup) continue;
+                                    uniq[nu].rel = es[i].rel; uniq[nu].obj = es[i].b_id;
+                                    uniq[nu].shard = de2->d_name; nu++;
+                                }
+                            }
+                            c7b_close(c3);
+                        }
+                        closedir(dp2);
+                        printf("[语料] union %s：扫 %d 片，%d 片有事实，读回 %zu 条，去重后 %d 条\n",
+                               name, nshard, nhit, total_edges, nu);
+                        for (int i = 0; i < nu && i < 20; ++i)
+                            printf("           %s --[%s]--> w%06u  （%s）\n", name,
+                                   c7b_rel_name(uniq[i].rel), uniq[i].obj, uniq[i].shard);
+                        if (nu > 20) printf("           （还有 %d 条）\n", nu - 20);
+                        continue;
+                    }
                     if (!strcmp(act, "rel")) {
                         if (!g_c7b) { printf("[语料] 没开着分片（::parts corpus <文件.c7b>）\n"); continue; }
                         if (g_c7b->ver == 2) {
