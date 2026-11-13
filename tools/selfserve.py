@@ -43,18 +43,51 @@ REQS = [
     dict(name="单词个数", desc="读入一行字符串（标准输入），输出单词的个数。",
          key="单词的个数", kind="str", examples=[("a b c\n", "3"), ("hi\n", "1")],
          props=["range"]),
+    dict(name="七的个数自动", desc="读入一行整数（标准输入），输出其中数字 7 出现的次数。",
+         key="数字 7 出现的次数", kind="arr", family="count_digit", digit=7, examples=[], props=["range"]),
     dict(name="绝对值和", desc="读入一行整数（标准输入），输出所有元素绝对值之和。",
          key="绝对值之和", kind="arr", examples=[("-1 2 -3\n", "6")], props=["abs_sum"]),
     dict(name="极差", desc="读入一行整数（标准输入），输出最大值与最小值之差。",
          key="最大值与最小值之差", kind="arr", examples=[("4 1 9\n", "8")], props=["range_diff"]),
-    dict(name="七的个数", desc="读入一行整数（标准输入），输出其中数字 7 出现的次数。",
-         key="数字 7 出现的次数", kind="arr", examples=[("7 17 7\n", "3")], props=["range"]),
     dict(name="符号和", desc="读入一行整数（标准输入），正数记 1、负数记 -1、零记 0，输出这些值的和。",
          key="正数记 1", kind="arr", examples=[("1 -2 0\n", "0")], props=["range"]),
     dict(name="字符串压缩", desc="读入一行字符串（标准输入），把连续重复的字符压缩成字符+次数（输出压缩后的串）。",
          key="连续重复的字符压缩", kind="str", examples=[("aaabb\n", "a3b2"), ("abc\n", "abc")],
          props=[]),
 ]
+
+# ---------- 示例自动生成：family → 现算期望（不需要人手写示例） ----------
+def auto_examples(req):
+    fam = req.get("family")
+    if not fam:
+        return []
+    if fam == "count_digit":
+        d = req.get("digit", 7)
+        cases = [([d], "1"), ([d, d], "2"), ([d * 11], "2"), ([1, 2, 3], "0")]
+        return [(f"{' '.join(str(x) for x in v)}\n", w) for v, w in cases]
+    if fam == "sum":
+        vs = [[1, 2, 3], [-1, 2], [5]]
+        return [(f"{' '.join(str(x) for x in v)}\n", str(sum(v))) for v in vs]
+    if fam == "abs_sum":
+        vs = [[-1, 2, -3], [4], [-5]]
+        return [(f"{' '.join(str(x) for x in v)}\n", str(sum(abs(x) for x in v))) for v in vs]
+    if fam == "range_diff":
+        vs = [[4, 1, 9], [7], [0, 0]]
+        return [(f"{' '.join(str(x) for x in v)}\n", str(max(v) - min(v))) for v in vs]
+    if fam == "max":
+        vs = [[4, 1, 9], [7], [-2, -5]]
+        return [(f"{' '.join(str(x) for x in v)}\n", str(max(v))) for v in vs]
+    if fam == "min":
+        vs = [[4, 1, 9], [7], [-2, -5]]
+        return [(f"{' '.join(str(x) for x in v)}\n", str(min(v))) for v in vs]
+    if fam == "count_even":
+        vs = [[1, 2, 4], [1, 3], [8]]
+        return [(f"{' '.join(str(x) for x in v)}\n", str(sum(1 for x in v if x % 2 == 0))) for v in vs]
+    if fam == "sorted":
+        vs = [[3, 1, 2], [5], [-1, 0]]
+        return [(f"{' '.join(str(x) for x in v)}\n", " ".join(str(x) for x in sorted(v))) for v in vs]
+    return []
+
 
 def kind_of(req):
     return req.get("kind", "argv")
@@ -123,7 +156,10 @@ def prop_check(name, case, out, code):
 
 def verify(exe, req, rng):
     """示例 + 性质 + 稳定：返回 (ok, 说明)"""
-    for case, want in req["examples"]:
+    ex = req["examples"] or auto_examples(req)
+    if not ex:
+        return False, "没有示例也没有可用 family（不猜）"
+    for case, want in ex:
         got = run_case(exe, req, case)
         if got != want:
             return False, f"示例 {case!r} 得到 {got!r} 期望 {want!r}"
