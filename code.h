@@ -847,11 +847,12 @@ static inline int code_chain(AI *ai, const char *desc, int min_ops, int need_par
                     }
                     /* §6.727 关键词前面也能取参数（"1 到 6 的阶乘"里 6 在"的阶乘"前；
                      * "1 到 100 里能被 3 整除"里 100 在"能被"前）。 */
+                    const char *scan = desc + best_pos;   /* 从关键词起点往前，逐个参数取 */
                     while (got < has_param) {
-                        const char *q = desc + best_pos;
+                        const char *q = scan;
                         size_t back = 0;
                         if (q > desc) q--;
-                        while (q > desc && back < 24 && !(*q >= '0' && *q <= '9') &&
+                        while (q > desc && back < 48 && !(*q >= '0' && *q <= '9') &&
                                !(*q >= 'a' && *q <= 'z') && !(*q >= 'A' && *q <= 'Z')) { q--; back++; }
                         if (q <= desc) break;
                         if (*q >= '0' && *q <= '9') {
@@ -866,13 +867,11 @@ static inline int code_chain(AI *ai, const char *desc, int min_ops, int need_par
                             const char *nx = q;
                             while (*nx == ' ') nx++;
                             if (k > 0 && !(nx[0] == (char)0xE5 && nx[1] == (char)0x88 && nx[2] == (char)0xB0)) {
-                                got++; break;
+                                got++; scan = e; continue;     /* 继续往前取下一个参数 */
                             }
                             /* 是"1 到"里的 1：跳过它继续往前找 */
-                            q = e;
-                            if (q <= desc) break;
-                            size_t back2 = (size_t)(desc + best_pos - q);
-                            if (back2 > 24) break;
+                            scan = e;
+                            if (scan <= desc) break;
                             continue;
                         }
                         /* §6.728 向前取单个 ASCII 字符（"a 换成 b" 的 a；只在引号占位符时） */
@@ -883,7 +882,8 @@ static inline int code_chain(AI *ai, const char *desc, int min_ops, int need_par
                                 pbufs[n][got][0] = *q;
                                 pbufs[n][got][1] = 0;
                                 got++;
-                                break;
+                                scan = q;
+                                continue;
                             }
                         }
                         break;

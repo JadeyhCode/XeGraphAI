@@ -727,6 +727,24 @@ HELDOUT38 = [
     dict(name="首字母大写再逆序", desc="写一个程序：读入一行字符串（标准输入），把每个单词首字母大写，再倒序输出。",
          kind="stdin", data=["ab cd\n"], want="dC bA"),
 ]
+HELDOUT39 = [
+    dict(name="2的10次方", desc="写一个程序：输出 2 的 10 次方。",
+         kind="argv", data=[], want="1024"),
+    dict(name="3的5次方", desc="写一个程序：输出 3 的 5 次方。",
+         kind="argv", data=[], want="243"),
+    dict(name="7的3次方", desc="写一个程序：输出 7 的 3 次方。",
+         kind="argv", data=[], want="343"),
+    dict(name="5的4次方", desc="写一个程序：输出 5 的 4 次方。",
+         kind="argv", data=[], want="625"),
+    dict(name="7倍", desc="写一个程序：读入一个整数（命令行参数），输出它的 7 倍。",
+         kind="argv", data=["6"], want="42"),
+    dict(name="12倍", desc="写一个程序：读入一个整数（命令行参数），输出它的 12 倍。",
+         kind="argv", data=["5"], want="60"),
+    dict(name="除以7余数", desc="写一个程序：读入一个整数（命令行参数），输出它除以 7 的余数。",
+         kind="argv", data=["100"], want="2"),
+    dict(name="除以9余数", desc="写一个程序：读入一个整数（命令行参数），输出它除以 9 的余数。",
+         kind="argv", data=["50"], want="5"),
+]
 
 def run_synth(model, desc):
     for f in glob.glob(os.path.join(ROOT, "_t/work/synth_*.c")):
@@ -783,7 +801,7 @@ def judge(spec, model):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default=os.path.join(ROOT, "code/code_model.bin"))
-    ap.add_argument("--only", choices=["battery", "heldout", "heldout2", "heldout3", "heldout4", "heldout5", "heldout6", "heldout7", "heldout8", "heldout9", "heldout10", "heldout11", "heldout12", "heldout13", "heldout14", "heldout15", "heldout16", "heldout17", "heldout18", "heldout19", "heldout20", "heldout21", "heldout22", "heldout23", "heldout24", "heldout25", "heldout26", "heldout27", "heldout28", "heldout29", "heldout30", "heldout31", "heldout32", "heldout33", "heldout34", "heldout35", "heldout36", "heldout37", "heldout38"], default=None)
+    ap.add_argument("--only", choices=["battery", "heldout", "heldout2", "heldout3", "heldout4", "heldout5", "heldout6", "heldout7", "heldout8", "heldout9", "heldout10", "heldout11", "heldout12", "heldout13", "heldout14", "heldout15", "heldout16", "heldout17", "heldout18", "heldout19", "heldout20", "heldout21", "heldout22", "heldout23", "heldout24", "heldout25", "heldout26", "heldout27", "heldout28", "heldout29", "heldout30", "heldout31", "heldout32", "heldout33", "heldout34", "heldout35", "heldout36", "heldout37", "heldout38", "heldout39"], default=None)
     args = ap.parse_args()
     model = args.model if os.path.isabs(args.model) else os.path.join(ROOT, args.model)
     if not os.path.exists(model):
@@ -833,6 +851,7 @@ def main():
     if args.only in (None, "heldout36"): groups.append(("heldout36", HELDOUT36))
     if args.only in (None, "heldout37"): groups.append(("heldout37", HELDOUT37))
     if args.only in (None, "heldout38"): groups.append(("heldout38", HELDOUT38))
+    if args.only in (None, "heldout39"): groups.append(("heldout39", HELDOUT39))
     battery_ok = True
     for gname, tasks in groups:
         print(f"== {gname} ==")
