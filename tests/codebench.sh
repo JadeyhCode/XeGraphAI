@@ -231,6 +231,61 @@ fi
 # ---------- D 段：扩图不降语义（M4 判据④后半） ----------
 # 加几十万条**与代码无关**的知识（噪声词/噪声类）：图从 3.3×10⁵ 边涨到 ≥10⁶ 边，
 # 代码知识一条不动 ⇒ B 段必须仍然 15/15。这就是"扩图不会把已经会的东西弄丢"的证据。
+# C3 **删关键词边**：任务/配方还在、代码还在，但描述再也匹配不上 ⇒ 一个都写不出来。
+# 这条验的是「检索」这一层本身是承重的。
+: > abl3.triples
+awk -F'\t' 'BEGIN{OFS="\t"} $2=="关键词"{next} {print}' "$ROOT/code/knowledge/skeletons.triples" >> abl3.triples
+if [ -s "$ROOT/code/knowledge/compose.triples" ]; then
+    awk -F'\t' 'BEGIN{OFS="\t"} $2=="关键词"{next} {print}' "$ROOT/code/knowledge/compose.triples" >> abl3.triples
+fi
+cp "$ROOT/model.bin" abl3.bin
+printf '::ingest %s/abl3.triples\n::save %s/abl3_model.bin\n::quit\n' "$WORK" "$WORK" > abl3.in
+./build_aip --model abl3.bin < abl3.in > abl3.log 2>&1
+run_set "$WORK/abl3_model.bin" c3set "$TASKS"
+C3_PASS=$_pass
+printf '  C3 删关键词边：%d / %d 个任务仍能写出来（要求 **0**）\n' "$C3_PASS" "$N_TASKS"
+if [ "$C3_PASS" -eq 0 ]; then
+    ok "C3 删关键词边：$N_TASKS 个任务一个都匹配不上 ⇒ 检索层是承重的"
+else
+    bad "C3 删了全部 关键词 边，居然还有 $C3_PASS 个任务写出来了" \
+        "$(grep -la '测试全绿' c3set/r*.txt 2>/dev/null | tr '\n' ' ')"
+fi
+
+# C4 **换错骨架**：任务→骨架 的边全指向 冒泡排序（代码还在、检索也命中）⇒
+# 骨架任务写出来的程序**语义不对**（编译得过但断言红）；组合任务不经过骨架，应照旧绿。
+: > abl4.triples
+awk -F'\t' 'BEGIN{OFS="\t"} $2=="骨架"{ $3="骨架:冒泡排序" } {print}' "$ROOT/code/knowledge/skeletons.triples" > abl4.triples
+if [ -s "$ROOT/code/knowledge/compose.triples" ]; then
+    cat "$ROOT/code/knowledge/compose.triples" >> abl4.triples
+fi
+cp "$ROOT/model.bin" abl4.bin
+printf '::ingest %s/abl4.triples\n::save %s/abl4_model.bin\n::quit\n' "$WORK" "$WORK" > abl4.in
+./build_aip --model abl4.bin < abl4.in > abl4.log 2>&1
+run_set "$WORK/abl4_model.bin" c4set "$TASKS"
+C4_PASS=$_pass
+C4_BAD=0; C4_SKELETON=0
+_n=0
+while IFS= read -r _task; do
+    _n=$((_n + 1))
+    if grep -qa '组合：' "c4set/r$_n.txt"; then
+        # 组合任务不经过 任务→骨架 边：必须照旧绿，且不该提到冒泡骨架
+        if ! grep -qa '测试全绿' "c4set/r$_n.txt"; then C4_BAD=$((C4_BAD + 1)); fi
+        if grep -qa '骨架:冒泡排序' "c4set/r$_n.txt"; then C4_BAD=$((C4_BAD + 1)); fi
+    else
+        C4_SKELETON=$((C4_SKELETON + 1))
+        # 骨架任务：检索必须**跟着被改坏的边走**（命中冒泡骨架）——
+        # 这就是“骨架边是承重的”的结构证据；程序自身断言抓不住语义错误，别假装抓得住。
+        if ! grep -qa '骨架:冒泡排序' "c4set/r$_n.txt"; then C4_BAD=$((C4_BAD + 1)); fi
+    fi
+done < "$TASKS"
+printf '  C4 换错骨架：%d / %d 仍“测试全绿”（骨架任务 %d 个，要求它们被换到冒泡骨架；组合任务应照旧绿）\n' \
+    "$C4_PASS" "$N_TASKS" "$C4_SKELETON"
+if [ "$C4_BAD" -eq 0 ] && [ "$C4_SKELETON" -gt 0 ]; then
+    ok "C4 换错骨架：$C4_SKELETON 个骨架任务全部跟着错边走到冒泡骨架 ⇒ 骨架边是承重的"
+else
+    bad "C4 换错骨架的结果不对（骨架任务 $C4_SKELETON 个；异常 $C4_BAD 处）" \
+        "$(grep -la '组合：' c4set/r*.txt 2>/dev/null | head -2 | tr '\n' ' ')"
+fi
 echo "== D 段：扩图到 ≥10⁶ 边 ⇒ B 段不下降 =="
 D_PASS=0
 if [ -s "$MODEL" ]; then
@@ -285,18 +340,20 @@ fi
 echo
 printf 'A 修复段：%d / %d\n' "$A_PASS" "$A_TOTAL"
 printf 'B 合成段：%d / %d（阶段四 M2 目标 ≥5/6）\n' "$B_PASS" "$B_TOTAL"
-printf 'C 消融：C1 全量消融后 %d / %d 通过（要求 0）；C2 只删片段 %d / %d\n' "${C1_PASS:-0}" "$N_TASKS" "${C2_PASS:-0}" "$N_TASKS"
+printf 'C 消融：C1 全量消融后 %d / %d；C2 只删片段 %d / %d；C3 删关键词 %d / %d；C4 换错骨架 %d / %d\n' \
+    "${C1_PASS:-0}" "$N_TASKS" "${C2_PASS:-0}" "$N_TASKS" "${C3_PASS:-0}" "$N_TASKS" "${C4_PASS:-0}" "$N_TASKS"
 printf 'D 扩图：%d / %d（要求与 B 段相同）\n' "${D_PASS:-0}" "$N_TASKS"
 [ -n "${1:-}" ] && [ "$1" = "--keep" ] || rm -rf "$WORK/src" "$WORK"/bset "$WORK"/c1set "$WORK"/c2set "$WORK"/dset \
     "$WORK"/synth* "$WORK"/run.in "$WORK"/out.txt "$WORK"/*.triples "$WORK"/big.bin "$WORK"/abl1.bin "$WORK"/abl2.bin \
     "$WORK"/big_model.bin "$WORK"/abl1_model.bin "$WORK"/abl2_model.bin 2>/dev/null
 if [ "$A_PASS" -eq "$A_TOTAL" ] && [ "$B_PASS" -eq "$B_TOTAL" ] && \
-   [ "$C1_PASS" -eq 0 ] && [ "$C1_BADREASON" -eq 0 ] && [ "$C2_BAD" -eq 0 ] && [ "$D_OK" -eq 1 ]; then
-    printf 'PASS codebench（A %d/%d；B %d/%d；C1 全量消融 0/%d；C2 片段承重；D 扩图 %d/%d）\n' \
+   [ "$C1_PASS" -eq 0 ] && [ "$C1_BADREASON" -eq 0 ] && [ "$C2_BAD" -eq 0 ] && \
+   [ "$C3_PASS" -eq 0 ] && [ "$C4_BAD" -eq 0 ] && [ "$D_OK" -eq 1 ]; then
+    printf 'PASS codebench（A %d/%d；B %d/%d；C1 全量消融 0/%d；C2 片段承重；C3 关键词承重；C4 骨架承重；D 扩图 %d/%d）\n' \
         "$A_PASS" "$A_TOTAL" "$B_PASS" "$B_TOTAL" "$N_TASKS" "$D_PASS" "$N_TASKS"
     exit 0
 else
-    printf 'FAIL codebench（A %d/%d；B %d/%d；C1 %d；C2 异常 %d；D %d）\n' \
-        "$A_PASS" "$A_TOTAL" "$B_PASS" "$B_TOTAL" "${C1_PASS:-0}" "$C2_BAD" "$D_OK"
+    printf 'FAIL codebench（A %d/%d；B %d/%d；C1 %d；C2 异常 %d；C3 %d；C4 异常 %d；D %d）\n' \
+        "$A_PASS" "$A_TOTAL" "$B_PASS" "$B_TOTAL" "${C1_PASS:-0}" "$C2_BAD" "${C3_PASS:-0}" "${C4_BAD:-0}" "$D_OK"
     exit 1
 fi
