@@ -16,7 +16,7 @@
 用法：python3 tools/code_hidden.py [--model code/code_model.bin] [--only battery|heldout]
 退出码：battery 全过 = 0，否则 1；heldout 只报告，不作为门。
 """
-import argparse, glob, os, re, subprocess, sys
+import argparse, glob, os, re, shutil, subprocess, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -745,9 +745,27 @@ HELDOUT39 = [
     dict(name="除以9余数", desc="写一个程序：读入一个整数（命令行参数），输出它除以 9 的余数。",
          kind="argv", data=["50"], want="5"),
 ]
+HELDOUT40 = [
+    dict(name="多文件2", desc="写一个程序：多文件2。",
+         kind="argv", data=[], want="5"),
+    dict(name="多文件3", desc="写一个程序：多文件3。",
+         kind="argv", data=[], want="-1"),
+    dict(name="多文件4", desc="写一个程序：多文件4。",
+         kind="argv", data=[], want="6"),
+    dict(name="多文件5", desc="写一个程序：多文件5。",
+         kind="argv", data=[], want="5"),
+    dict(name="多文件6", desc="写一个程序：多文件6。",
+         kind="argv", data=[], want="6"),
+    dict(name="多文件7", desc="写一个程序：多文件7。",
+         kind="argv", data=[], want="-1"),
+    dict(name="多文件8", desc="写一个程序：多文件8。",
+         kind="argv", data=[], want="5"),
+    dict(name="多文件9", desc="写一个程序：多文件9。",
+         kind="argv", data=[], want="6"),
+]
 
 def run_synth(model, desc):
-    for f in glob.glob(os.path.join(ROOT, "_t/work/synth_*.c")):
+    for f in glob.glob(os.path.join(ROOT, "_t/work/synth_*.c")) +              glob.glob(os.path.join(ROOT, "_t/work/synth_*.out")):
         try: os.remove(f)
         except OSError: pass
     inp = f"::act on\n::code synth {desc}\n::quit\n"
@@ -771,13 +789,20 @@ def clean_out(s):
 
 def judge(spec, model):
     path, out = run_synth(model, spec["desc"])
-    if not path:
-        return "NO_MATCH", "没有生成 .c（多半是图上没有匹配的任务）", out
     exe = os.path.join(ROOT, "_t/work", "hidden_" + spec["name"])
-    cc = subprocess.run(["gcc", "-std=c11", "-O2", "-o", exe, path, "-lm"],
-                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=120)
-    if cc.returncode != 0:
-        return "COMPILE_FAIL", cc.stdout.decode("utf-8", "replace")[-300:], out
+    if not path:
+        # §6.807 多文件工程：产物是 synth_<任务>.out（而不是单个 .c）
+        outs = sorted(glob.glob(os.path.join(ROOT, "_t/work/synth_*.out")),
+                      key=os.path.getmtime)
+        if not outs or "测试全绿" not in out:
+            return "NO_MATCH", "没有生成 .c/.out（多半是图上没有匹配的任务）", out
+        shutil.copyfile(outs[-1], exe)
+        os.chmod(exe, 0o755)
+    else:
+        cc = subprocess.run(["gcc", "-std=c11", "-O2", "-o", exe, path, "-lm"],
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=120)
+        if cc.returncode != 0:
+            return "COMPILE_FAIL", cc.stdout.decode("utf-8", "replace")[-300:], out
     try:
         if spec["kind"] == "argv":
             p = subprocess.run([exe] + spec["data"], stdout=subprocess.PIPE,
@@ -801,7 +826,7 @@ def judge(spec, model):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default=os.path.join(ROOT, "code/code_model.bin"))
-    ap.add_argument("--only", choices=["battery", "heldout", "heldout2", "heldout3", "heldout4", "heldout5", "heldout6", "heldout7", "heldout8", "heldout9", "heldout10", "heldout11", "heldout12", "heldout13", "heldout14", "heldout15", "heldout16", "heldout17", "heldout18", "heldout19", "heldout20", "heldout21", "heldout22", "heldout23", "heldout24", "heldout25", "heldout26", "heldout27", "heldout28", "heldout29", "heldout30", "heldout31", "heldout32", "heldout33", "heldout34", "heldout35", "heldout36", "heldout37", "heldout38", "heldout39"], default=None)
+    ap.add_argument("--only", choices=["battery", "heldout", "heldout2", "heldout3", "heldout4", "heldout5", "heldout6", "heldout7", "heldout8", "heldout9", "heldout10", "heldout11", "heldout12", "heldout13", "heldout14", "heldout15", "heldout16", "heldout17", "heldout18", "heldout19", "heldout20", "heldout21", "heldout22", "heldout23", "heldout24", "heldout25", "heldout26", "heldout27", "heldout28", "heldout29", "heldout30", "heldout31", "heldout32", "heldout33", "heldout34", "heldout35", "heldout36", "heldout37", "heldout38", "heldout39", "heldout40"], default=None)
     args = ap.parse_args()
     model = args.model if os.path.isabs(args.model) else os.path.join(ROOT, args.model)
     if not os.path.exists(model):
@@ -852,6 +877,7 @@ def main():
     if args.only in (None, "heldout37"): groups.append(("heldout37", HELDOUT37))
     if args.only in (None, "heldout38"): groups.append(("heldout38", HELDOUT38))
     if args.only in (None, "heldout39"): groups.append(("heldout39", HELDOUT39))
+    if args.only in (None, "heldout40"): groups.append(("heldout40", HELDOUT40))
     battery_ok = True
     for gname, tasks in groups:
         print(f"== {gname} ==")

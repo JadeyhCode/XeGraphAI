@@ -1169,3 +1169,140 @@ int main(int argc, char **argv) {\
 运算:余数	参数	P
 运算:余数	语句	x = N % <P>;
 运算:余数	模板	模板:命令行整数
+
+# 多文件工程（2026-11-13）：任务 --文件--> 文件:X，X 有 代码 边
+任务:两文件相加	关键词	两文件相加
+任务:两文件相加	文件	文件:proj_main.c
+任务:两文件相加	文件	文件:proj_add.c
+任务:两文件相加	文件	文件:proj_add.h
+任务:两文件相加	用途	多文件：main 调 add，add 在另一个 .c，声明在 .h
+文件:proj_main.c	代码	#include <stdio.h>\
+#include "proj_add.h"\
+int main(void) {\
+    long r = proj_add(2, 3);\
+    printf("%ld\n", r);\
+    printf("%s\n", r == 5 ? "ok" : "FAIL");\
+    return r == 5 ? 0 : 1;\
+}
+文件:proj_add.c	代码	long proj_add(long a, long b) { return a + b; }
+文件:proj_add.h	代码	long proj_add(long a, long b);
+任务:多文件2	关键词	多文件2
+任务:多文件2	文件	文件:t2a_main.c
+任务:多文件2	文件	文件:t2a_op.c
+任务:多文件2	文件	文件:t2a_op.h
+任务:多文件2	用途	多文件 多文件2
+文件:t2a_main.c	代码	#include <stdio.h>\
+#include "t2a_op.h"\
+int main(void) {\
+    long r = p2a(2, 3);\
+    printf("%ld\n", r);\
+    printf("%s\n", r == 5 ? "ok" : "FAIL");\
+    return r == 5 ? 0 : 1;\
+}
+文件:t2a_op.c	代码	long p2a(long a, long b) { return a + b; }
+文件:t2a_op.h	代码	long p2a(long a, long b);
+任务:多文件3	关键词	多文件3
+任务:多文件3	文件	文件:t2b_main.c
+任务:多文件3	文件	文件:t2b_op.c
+任务:多文件3	文件	文件:t2b_op.h
+任务:多文件3	用途	多文件 多文件3
+文件:t2b_main.c	代码	#include <stdio.h>\
+#include "t2b_op.h"\
+int main(void) {\
+    long r = p2b(2, 3);\
+    printf("%ld\n", r);\
+    printf("%s\n", r == -1 ? "ok" : "FAIL");\
+    return r == -1 ? 0 : 1;\
+}
+文件:t2b_op.c	代码	long p2b(long a, long b) { return a - b; }
+文件:t2b_op.h	代码	long p2b(long a, long b);
+任务:多文件4	关键词	多文件4
+任务:多文件4	文件	文件:t2c_main.c
+任务:多文件4	文件	文件:t2c_op.c
+任务:多文件4	文件	文件:t2c_op.h
+任务:多文件4	用途	多文件 多文件4
+文件:t2c_main.c	代码	#include <stdio.h>\
+#include "t2c_op.h"\
+int main(void) {\
+    long r = p2c(2, 3);\
+    printf("%ld\n", r);\
+    printf("%s\n", r == 6 ? "ok" : "FAIL");\
+    return r == 6 ? 0 : 1;\
+}
+文件:t2c_op.c	代码	long p2c(long a, long b) { return a * b; }
+文件:t2c_op.h	代码	long p2c(long a, long b);
+任务:多文件5	关键词	多文件5
+任务:多文件5	文件	文件:t2d_main.c
+任务:多文件5	文件	文件:t2d_op.c
+任务:多文件5	文件	文件:t2d_op.h
+任务:多文件5	用途	多文件 多文件5
+文件:t2d_main.c	代码	#include <stdio.h>\
+#include "t2d_op.h"\
+int main(void) {\
+    long r = p2d(2, 3);\
+    printf("%ld\n", r);\
+    printf("%s\n", r == 5 ? "ok" : "FAIL");\
+    return r == 5 ? 0 : 1;\
+}
+文件:t2d_op.c	代码	long p2d(long a, long b) { return a + b; }
+文件:t2d_op.h	代码	long p2d(long a, long b);
+任务:多文件6	关键词	多文件6
+任务:多文件6	文件	文件:t2e_main.c
+任务:多文件6	文件	文件:t2e_op.c
+任务:多文件6	文件	文件:t2e_op.h
+任务:多文件6	用途	多文件 多文件6
+文件:t2e_main.c	代码	#include <stdio.h>\
+#include "t2e_op.h"\
+int main(void) {\
+    long r = p2e(2, 3);\
+    printf("%ld\n", r);\
+    printf("%s\n", r == 6 ? "ok" : "FAIL");\
+    return r == 6 ? 0 : 1;\
+}
+文件:t2e_op.c	代码	long p2e(long a, long b) { return a * b; }
+文件:t2e_op.h	代码	long p2e(long a, long b);
+任务:多文件7	关键词	多文件7
+任务:多文件7	文件	文件:t2f_main.c
+任务:多文件7	文件	文件:t2f_op.c
+任务:多文件7	文件	文件:t2f_op.h
+任务:多文件7	用途	多文件 多文件7
+文件:t2f_main.c	代码	#include <stdio.h>\
+#include "t2f_op.h"\
+int main(void) {\
+    long r = p2f(2, 3);\
+    printf("%ld\n", r);\
+    printf("%s\n", r == -1 ? "ok" : "FAIL");\
+    return r == -1 ? 0 : 1;\
+}
+文件:t2f_op.c	代码	long p2f(long a, long b) { return a - b; }
+文件:t2f_op.h	代码	long p2f(long a, long b);
+任务:多文件8	关键词	多文件8
+任务:多文件8	文件	文件:t2g_main.c
+任务:多文件8	文件	文件:t2g_op.c
+任务:多文件8	文件	文件:t2g_op.h
+任务:多文件8	用途	多文件 多文件8
+文件:t2g_main.c	代码	#include <stdio.h>\
+#include "t2g_op.h"\
+int main(void) {\
+    long r = p2g(2, 3);\
+    printf("%ld\n", r);\
+    printf("%s\n", r == 5 ? "ok" : "FAIL");\
+    return r == 5 ? 0 : 1;\
+}
+文件:t2g_op.c	代码	long p2g(long a, long b) { return a + b; }
+文件:t2g_op.h	代码	long p2g(long a, long b);
+任务:多文件9	关键词	多文件9
+任务:多文件9	文件	文件:t2h_main.c
+任务:多文件9	文件	文件:t2h_op.c
+任务:多文件9	文件	文件:t2h_op.h
+任务:多文件9	用途	多文件 多文件9
+文件:t2h_main.c	代码	#include <stdio.h>\
+#include "t2h_op.h"\
+int main(void) {\
+    long r = p2h(2, 3);\
+    printf("%ld\n", r);\
+    printf("%s\n", r == 6 ? "ok" : "FAIL");\
+    return r == 6 ? 0 : 1;\
+}
+文件:t2h_op.c	代码	long p2h(long a, long b) { return a * b; }
+文件:t2h_op.h	代码	long p2h(long a, long b);

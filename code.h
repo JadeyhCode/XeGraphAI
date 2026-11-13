@@ -32,6 +32,9 @@
 #include "lex.h"        /* ASCII 代码词法（::ascii on 时把"逐字保留"记进痕；见下） */
 
 #define CODE_MAX_FIX   1
+static inline int code_emit_multi(AI *ai, const char *const *names, const char *const *codes,
+                                  int n, const char *outbase, char *note, size_t cap);   /* §6.807 前置声明 */
+
 #define CODE_MAX_PIECES 16        /* 一次组合最多拼几个片段（§6.708 依赖排序的数组上限） */
 #define CODE_SRC_CAP   16384      /* 源文件读进来的上限（够写个小程序） */
 #define CODE_ERR_CAP   192
@@ -1299,6 +1302,29 @@ static inline int code_synth(AI *ai, const char *desc, char *note, size_t cap) {
         int crc = code_compose(ai, best, desc, note, cap, "组合");
         if (crc != -3) return crc;
     }
+    /* ①b 多文件工程：任务 --文件--> 文件:X（每个 X 有 代码 边）⇒ 写多文件一起编 */
+    {
+        uint8_t rid_f = rel_id_of(ai, "文件", 0);
+        if (rid_f >= REL_DYN_BASE) {
+            uint8_t d_f = (uint8_t)(rid_f - REL_DYN_BASE + 1);
+            const char *fn[8]; const char *fc[8]; int nf = 0;
+            for (size_t j = 0; j < best->count && nf < 8; ++j) {
+                const AssocEntry *e = &token_assocs_ro(best)[j];
+                if (!e->main || e->dyn != d_f || !e->main->name) continue;
+                const char *code = NULL;
+                for (size_t k = 0; k < e->main->count; ++k) {
+                    const AssocEntry *c = &token_assocs_ro(e->main)[k];
+                    if (c->main && c->dyn == dyn_cd && c->main->name) { code = c->main->name; break; }
+                }
+                if (!code) continue;
+                const char *fnm = e->main->name;
+                if (!strncmp(fnm, "文件:", 7)) fnm += 7;   /* 文件名 = 符号名去掉 "文件:" */
+                if (!fnm[0]) continue;
+                fn[nf] = fnm; fc[nf] = code; nf++;
+            }
+            if (nf > 0) return code_emit_multi(ai, fn, fc, nf, best->name + 7, note, cap);
+        }
+    }
     /* ② 骨架 → 代码（两步都必须在图上**查得到**） */
     Token *skel = NULL;
     for (size_t j = 0; j < best->count; ++j) {
@@ -1336,6 +1362,49 @@ static inline int code_synth(AI *ai, const char *desc, char *note, size_t cap) {
     return rc;
 }
 
+/* §6.807 **多文件工程**：任务 --文件--> 文件:X，每个 X 有 代码 边（一个文件的内容）。
+ * 写多个文件、`gcc` 一起编、跑产物。为什么值得单开一条：单文件闭环只能验"一个翻译单元"，
+ * 多文件才碰得到头文件/外部符号/链接错误这些真问题。 */
+static inline int code_emit_multi(AI *ai, const char *const *names, const char *const *codes,
+                                  int n, const char *outbase, char *note, size_t cap) {
+    if (!ai || n <= 0 || !outbase) return -3;
+    char outs[256];
+    snprintf(outs, sizeof outs, "synth_%s.out", outbase);
+    char cmd[1024];
+    int cl = snprintf(cmd, sizeof cmd, "gcc -std=c11 -Wall -Wextra -o %s", outs);
+    for (int i = 0; i < n; ++i) {
+        if (action_write_file(ai, names[i], codes[i]) != 0) {
+            if (note && cap) snprintf(note, cap, "写文件 %s 失败：%s", names[i], g_act.last_reason);
+            return -2;
+        }
+        int k = snprintf(cmd + cl, sizeof cmd - (size_t)cl, " %s", names[i]);
+        if (k < 0 || (size_t)k >= sizeof cmd - (size_t)cl) break;
+        cl += k;
+    }
+    int crc = action_run(ai, cmd);
+    if (crc != 0) {
+        const char *o = action_book()->last_out;
+        size_t ol = o ? strlen(o) : 0;
+        if (ol > 240) o += ol - 240;
+        if (note && cap) snprintf(note, cap, "%d 个文件：**没编过**（rc=%d）：%.160s", n, crc, o ? o : "");
+        return -2;
+    }
+    int rc = action_run_product(ai, outs);
+    size_t nok = 0, nbad = 0;
+    code_count_asserts(action_book()->last_out, &nok, &nbad);
+    if (note && cap) {
+        if (rc == 0 && nbad == 0)
+            snprintf(note, cap, "%d 个文件：编过、**测试全绿**（%s rc=0；断言 %zu ok / %zu FAIL）", n, outs, nok, nbad);
+        else {
+            const char *o = action_book()->last_out;
+            size_t ol = o ? strlen(o) : 0;
+            if (ol > 200) o += ol - 200;
+            snprintf(note, cap, "%d 个文件：编过但**测试不过**（rc=%d；断言 %zu ok / %zu FAIL）：%.100s",
+                     n, rc, nok, nbad, o ? o : "");
+        }
+    }
+    return rc;
+}
 /* §6.710 **片段检索**（`::code frag [关键词]`）：把图里 `片段:*` 的知识查出来。
  *
  * 为什么要有：§6.710 给图里灌了几千个**真实函数体**（`tools/c2triples.sh` 抽 + 过编译门），
