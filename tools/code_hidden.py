@@ -709,6 +709,24 @@ HELDOUT37 = [
     dict(name="等于1的个数乘二", desc="写一个程序：读入一行用空格分隔的整数（标准输入），输出等于 1 的数的个数再乘二。",
          kind="stdin", data=["1 2 1\n"], want="4"),
 ]
+HELDOUT38 = [
+    dict(name="区间整除和", desc="写一个程序：读入一行整数（标准输入），输出 1 到 100 里所有能被 7 整除的数的和。",
+         kind="stdin", data=["1\n"], want="735"),
+    dict(name="区间整除和乘二", desc="写一个程序：读入一行整数（标准输入），输出 1 到 50 里所有能被 5 整除的数的和再乘二。",
+         kind="stdin", data=["1\n"], want="550"),
+    dict(name="和与积", desc="写一个程序：读入三个整数（命令行参数），输出它们的和与积。",
+         kind="argv", data=["1", "2", "3"], want="6 6"),
+    dict(name="和与积含负数", desc="写一个程序：读入三个整数（命令行参数），输出它们的和与积。",
+         kind="argv", data=["-1", "2", "3"], want="4 -6"),
+    dict(name="去极值平均", desc="写一个程序：读入一行整数（标准输入），输出去掉最大值和最小值之后的平均。",
+         kind="stdin", data=["1 2 3 4\n"], want="2.50"),
+    dict(name="去极值平均乘二", desc="写一个程序：读入一行整数（标准输入），输出去掉最大值和最小值之后的平均再乘二。",
+         kind="stdin", data=["1 2 3 4\n"], want="20"),
+    dict(name="首字母大写", desc="写一个程序：读入一行字符串（标准输入），把每个单词首字母大写。",
+         kind="stdin", data=["hello world\n"], want="Hello World"),
+    dict(name="首字母大写再逆序", desc="写一个程序：读入一行字符串（标准输入），把每个单词首字母大写，再倒序输出。",
+         kind="stdin", data=["ab cd\n"], want="dC bA"),
+]
 
 def run_synth(model, desc):
     for f in glob.glob(os.path.join(ROOT, "_t/work/synth_*.c")):
@@ -765,7 +783,7 @@ def judge(spec, model):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default=os.path.join(ROOT, "code/code_model.bin"))
-    ap.add_argument("--only", choices=["battery", "heldout", "heldout2", "heldout3", "heldout4", "heldout5", "heldout6", "heldout7", "heldout8", "heldout9", "heldout10", "heldout11", "heldout12", "heldout13", "heldout14", "heldout15", "heldout16", "heldout17", "heldout18", "heldout19", "heldout20", "heldout21", "heldout22", "heldout23", "heldout24", "heldout25", "heldout26", "heldout27", "heldout28", "heldout29", "heldout30", "heldout31", "heldout32", "heldout33", "heldout34", "heldout35", "heldout36", "heldout37"], default=None)
+    ap.add_argument("--only", choices=["battery", "heldout", "heldout2", "heldout3", "heldout4", "heldout5", "heldout6", "heldout7", "heldout8", "heldout9", "heldout10", "heldout11", "heldout12", "heldout13", "heldout14", "heldout15", "heldout16", "heldout17", "heldout18", "heldout19", "heldout20", "heldout21", "heldout22", "heldout23", "heldout24", "heldout25", "heldout26", "heldout27", "heldout28", "heldout29", "heldout30", "heldout31", "heldout32", "heldout33", "heldout34", "heldout35", "heldout36", "heldout37", "heldout38"], default=None)
     args = ap.parse_args()
     model = args.model if os.path.isabs(args.model) else os.path.join(ROOT, args.model)
     if not os.path.exists(model):
@@ -814,6 +832,7 @@ def main():
     if args.only in (None, "heldout35"): groups.append(("heldout35", HELDOUT35))
     if args.only in (None, "heldout36"): groups.append(("heldout36", HELDOUT36))
     if args.only in (None, "heldout37"): groups.append(("heldout37", HELDOUT37))
+    if args.only in (None, "heldout38"): groups.append(("heldout38", HELDOUT38))
     battery_ok = True
     for gname, tasks in groups:
         print(f"== {gname} ==")

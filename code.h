@@ -1149,6 +1149,8 @@ static inline int code_chain(AI *ai, const char *desc, int min_ops, int need_par
         uint8_t rid_out = rel_id_of(ai, "输出", 0);
         if (rid_out >= REL_DYN_BASE) {
             uint8_t d_out = (uint8_t)(rid_out - REL_DYN_BASE + 1);
+            /* 只认**最后一个算子**的 输出（不许向后继承：试过继承，"转大写→长度"会沿用
+             * 转大写的"打印:字符串"，把长度当字符串打出来；矩阵减少一条也同理）。 */
             for (size_t j = 0; j < ops[n - 1]->count; ++j) {
                 const AssocEntry *e = &token_assocs_ro(ops[n - 1])[j];
                 if (e->main && e->dyn == d_out && e->main->name) { outtok = e->main; break; }
