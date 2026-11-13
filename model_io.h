@@ -47,7 +47,7 @@
  *     文件与内存各瘦一圈（内存里那 64 字节/条也从 AssocEntry 里删了）。
  *     v9 及以前照样读得回来：按 has_ctx 把那两段跳过去，读进来的边当**普通边**
  *     （旧文件里实测一条带语境的都没有；手工造过的那种会**少一层条件**，登记在案 —— 见 §6.50）。 */
-#define MODEL_VERSION 15u  /* v15: 尾部加"因为"表（§6.630，AI.reasons[16]）—— 旧档没有这一段 ⇒ 空表 */  /* v14: 删掉 hv/hv_prev（VSA 绑定代数整套撤销，§6.299）；读 v13 时按旧布局丢弃 */  /* v13: 他者**改口历史**（BelHist，§6.112） */  /* v12: 边存**时刻集合**（tset/n_tset，§6.111） */  /* v11: **N1 思考对象**持久化（摘要：结论/缺口/复没复核，§6.110） */  /* v7: 边增加**否定**关系与**动态**关系字节（L2 完整逻辑链） */
+#define MODEL_VERSION 16u  /* v16: 边打包 + 变长编码 + 边独立成段（M2-3，2026-11-13） */  /* v15: 尾部加"因为"表（§6.630，AI.reasons[16]）—— 旧档没有这一段 ⇒ 空表 */  /* v14: 删掉 hv/hv_prev（VSA 绑定代数整套撤销，§6.299）；读 v13 时按旧布局丢弃 */  /* v13: 他者**改口历史**（BelHist，§6.112） */  /* v12: 边存**时刻集合**（tset/n_tset，§6.111） */  /* v11: **N1 思考对象**持久化（摘要：结论/缺口/复没复核，§6.110） */  /* v7: 边增加**否定**关系与**动态**关系字节（L2 完整逻辑链） */
 
 /* ---------------------------------------------------------------- 字节流 */
 
@@ -111,6 +111,9 @@ static inline uint32_t mr_u32(MReader *r) { uint8_t b[4] = {0,0,0,0};
 static inline uint64_t mr_u64(MReader *r) { uint64_t lo = mr_u32(r); uint64_t hi = mr_u32(r);
                                             return lo | (hi << 32); }
 static inline float    mr_f32(MReader *r) { uint32_t u = mr_u32(r); float f; memcpy(&f, &u, 4); return f; }
+
+/* v16 的边/词编码（变长 + 默认值省略 + 边独立成段，见该文件头）*/
+#include "model_io_v16.h"
 
 /* ------------------------------------------------------- 通用 id 列表助手 */
 
@@ -211,43 +214,21 @@ static inline size_t ai_snapshot(const AI *ai, uint8_t *out, size_t cap, FILE *s
         if (!is_temp)
             for (size_t j = 0; j < t->count; ++j)
                 if (mio_edge_saved(&token_assocs_ro(t)[j])) n_saved_edges++;
-        uint32_t nlen = t->name ? (uint32_t)strlen(t->name) : 0;
-        mw_u32(&w, t->id);
-        mw_str(&w, t->name ? t->name : "", nlen);
-        mw_u32(&w, t->misses);
-        mw_u32(&w, t->recent_misses);
-        mw_u32(&w, t->parent ? t->parent->id : TOKEN_ID_NONE);
-        mw_u32(&w, t->next_in_time ? t->next_in_time->id : TOKEN_ID_NONE);
-        mw_u32(&w, t->perspective_of ? t->perspective_of->id : TOKEN_ID_NONE);
-        mw_u8 (&w, t->is_category);
-        mw_u8 (&w, is_temp ? 1 : t->is_garbage);   /* §6.598 临时节点落盘即"垃圾" */
-        mw_u8 (&w, t->mem_state);
-        mw_u64(&w, t->birth_tick);
-        mw_u64(&w, t->last_touch_tick);
-        mw_u32(&w, n_saved_edges);
+        /* v16：token 段只写"有多少条边"，边统一放到后面的边段（读盘单趟）*/
+        mio16_w_token(&w, t, is_temp, n_saved_edges);
+        if (w.err) return 0;
+    }
 
-        for (size_t j = 0; j < t->count && !is_temp; ++j) {
+    /* ---- 边段（v16：与 token 段分离，按 token 顺序平铺）---- */
+    for (size_t i = 0; i < p->count; ++i) {
+        const Token *t = p->tokens[i];
+        if (token_is_temp(t)) continue;
+        for (size_t j = 0; j < t->count; ++j) {
             const AssocEntry *e = &token_assocs_ro(t)[j];
             if (!mio_edge_saved(e)) continue;
-            /* v10：语境那两段（n_subs + 裸 id / n_not + 裸 id）不再写。 */
-            mw_u32(&w, e->main ? e->main->id : TOKEN_ID_NONE);
-            mw_u32(&w, e->action ? e->action->id : TOKEN_ID_NONE);            mw_u32(&w, e->hits);
-            mw_u32(&w, e->seq);
-            mw_u8 (&w, e->mem_state);
-            mw_u64(&w, e->birth_tick);
-            mw_u64(&w, e->last_touch_tick);
-            mw_u8 (&w, e->role);
-            mw_u8 (&w, e->topic);
-            mw_u8 (&w, e->pattern);
-            mw_u16(&w, e->rel);      /* v9：2 字节（bit8 = 需要） */
-            mw_u16(&w, e->nrel);
-            mw_u8 (&w, e->dyn);
-            /* v12：边上的**时刻集合**（互不相同的 tick，≤4） */
-            uint8_t nt_ok = (e->n_tset <= 4) ? e->n_tset : 0;   /* 同上：垃圾值当空集合 */
-            mw_u8 (&w, nt_ok);
-            for (uint8_t k = 0; k < 4; ++k) mw_u32(&w, k < nt_ok ? e->tset[k] : 0u);
+            mio16_w_edge(&w, e);
+            if (w.err) return 0;
         }
-        if (w.err) return 0;
     }
 
     /* ---- 池层 ---- */
@@ -637,41 +618,113 @@ static inline AI *ai_load_file(const char *path) {
 
     np = pool_new();
     if (!np) goto fail;
-
-    /* 两遍读：
-     *   第一遍只建符号节点骨架 + 把边当成「4 字节裸 id」堆在边上，不做任何指针解析；
-     *   第二遍（池里 0..n-1 全都有名字之后）再把 id 换成符号节点*。
-     * 必须在第二遍才解析，因为边可以引用文件里更靠后的符号节点（例如 id 0 的「我」
-     * 很可能比引用它的符号节点先出现），第一遍就去解析会拿到 NULL 而误判成损坏。 */
+    uint64_t cur_tick = 0;
     uint32_t *tok_parent = NULL, *tok_next = NULL, *tok_persp = NULL;
-
     tok_parent = (uint32_t *)calloc(n_tok, sizeof *tok_parent);
     tok_next   = (uint32_t *)calloc(n_tok, sizeof *tok_next);
     tok_persp  = (uint32_t *)calloc(n_tok, sizeof *tok_persp);
     if (!tok_parent || !tok_next || !tok_persp) goto fail;
 
+    #define V16F() goto v16fail
+    /* ================= v16：单趟读（token 段 → 边段 → 池层） ================= */
+    if (mver >= 16u) {
+        uint32_t *nedge = (uint32_t *)calloc(n_tok, sizeof *nedge);
+        if (!nedge) V16F();
+        for (uint32_t i = 0; i < n_tok; ++i) {
+            uint32_t id = (uint32_t)mr_uv(&r);
+            uint32_t nl = (uint32_t)mr_uv(&r);
+            if (r.err || nl > (1u << 20)) V16F();
+            char *name = NULL;
+            if (nl) {
+                name = (char *)malloc((size_t)nl + 1);
+                if (!name) V16F();
+                if (mr_raw(&r, name, nl) != 0) { free(name); V16F(); }
+                name[nl] = 0;
+            }
+            Token *t = pool_token(np, name, NULL);
+            free(name);
+            if (!t || t->id != id) V16F();
+            uint16_t f = mr_u16(&r);
+            if (r.err) V16F();
+            t->misses        = (f & MIO16_T_MISSES) ? (uint32_t)mr_uv(&r) : 0;
+            t->recent_misses = (f & MIO16_T_RECENT) ? (uint32_t)mr_uv(&r) : 0;
+            tok_parent[i] = (f & MIO16_T_PARENT) ? (uint32_t)mr_uv(&r) : TOKEN_ID_NONE;
+            tok_next[i]   = (f & MIO16_T_NEXT)   ? (uint32_t)mr_uv(&r) : TOKEN_ID_NONE;
+            tok_persp[i]  = (f & MIO16_T_PERSP)  ? (uint32_t)mr_uv(&r) : TOKEN_ID_NONE;
+            t->is_category = (f & MIO16_T_CAT) ? mr_u8(&r) : 0;
+            t->is_garbage  = (f & MIO16_T_GARB) ? mr_u8(&r) : 0;
+            t->mem_state   = (f & MIO16_T_MEM)  ? mr_u8(&r) : MEM_ACTIVE;
+            t->birth_tick      = (f & MIO16_T_BIRTH) ? (uint64_t)mr_uv(&r) : 0;
+            t->last_touch_tick = (f & MIO16_T_LAST)  ? (uint64_t)mr_uv(&r) : 0;
+            uint32_t na = (uint32_t)mr_uv(&r);
+            if (r.err || na > 20000000u) V16F();
+            nedge[i] = na;
+            assoc_seen += na;
+            if (na == 0) { t->cap = 0; t->count = 0; }
+            else {
+                size_t canon = 4;
+                while (canon <= na) canon *= 2;   /* 与 v15 同样的 cap 还原规则 */
+                t->cap = canon;
+                t->assocs = (AssocEntry *)calloc(t->cap, sizeof *t->assocs);
+                if (!t->assocs) V16F();
+                t->count = na;
+            }
+        }
+        /* 边段：按 token 顺序平铺，词已全部建好 ⇒ 直接解 id（不需要第二趟） */
+        for (uint32_t i = 0; i < n_tok; ++i) {
+            Token *t = np->tokens[i];
+            for (uint32_t j = 0; j < nedge[i]; ++j) {
+                AssocEntry *e = &token_assocs(t)[j];
+                if (mio16_r_edge(&r, e) != 0) {
+                    if (getenv("AIP_LOADDBG")) fprintf(stderr, "[v16] edge fail i=%u j=%u pos=%zu\n", i, j, r.pos);
+                    free(nedge); V16F();
+                }
+                uint32_t mid = (uint32_t)(uintptr_t)e->main;
+                if (mid == TOKEN_ID_NONE) e->main = NULL;
+                else { if (mid >= np->count) { free(nedge); V16F(); } e->main = np->tokens[mid]; }
+                if (e->action) {
+                    uint32_t aid = (uint32_t)(uintptr_t)e->action;
+                    e->action = (aid == TOKEN_ID_NONE || aid >= np->count) ? NULL : np->tokens[aid];
+                }
+                if (e->seq != TOKEN_SEQ_NONE && e->seq >= t->next_seq) t->next_seq = e->seq + 1;
+            }
+        }
+        free(nedge);
+        cur_tick = mr_u64(&r);
+        (void)mr_u32(&r);
+        if (r.err) V16F();
+        if (np->count != n_tok || assoc_seen != (uint64_t)n_assoc) V16F();
+        goto v16_loaded;
+    }
+    /* 两遍读（v15 及更早）：
+     *   第一遍只建符号节点骨架 + 把边当成「4 字节裸 id」堆在边上，不做任何指针解析；
+     *   第二遍（池里 0..n-1 全都有名字之后）再把 id 换成符号节点*。
+     * 必须在第二遍才解析，因为边可以引用文件里更靠后的符号节点（例如 id 0 的「我」
+     * 很可能比引用它的符号节点先出现），第一遍就去解析会拿到 NULL 而误判成损坏。 */
+
+
     for (uint32_t i = 0; i < n_tok; ++i) {
         uint32_t id  = mr_u32(&r);
         uint32_t nl  = mr_u32(&r);
-        if (r.err || nl > (1u << 20)) goto fail;
+        if (r.err || nl > (1u << 20)) V16F();
         char *name = NULL;
         if (nl) {
             name = (char *)malloc((size_t)nl + 1);
-            if (!name) goto fail;
-            if (mr_raw(&r, name, nl) != 0) { free(name); goto fail; }
+            if (!name) V16F();
+            if (mr_raw(&r, name, nl) != 0) { free(name); V16F(); }
             name[nl] = 0;
         }
         Token *t = pool_token(np, name, NULL);
         free(name);
-        if (!t || t->id != id) goto fail;
+        if (!t || t->id != id) V16F();
 
         /* §6.299 v13 及更早：每个符号节点带两份 1024 字节向量（hv/hv_prev）。
          * 读旧档时照样把字节**吃掉**（读到临时缓冲再丢），这样旧 model/session 不用重训。 */
         if (mver <= 13u) {
             int8_t scratch[EMB_DIM];
             for (int k = 0; k < 2; ++k) {
-                if (mr_u8(&r)) { if (mr_raw(&r, scratch, EMB_DIM) != 0) goto fail; }
-                else           { if (mr_raw(&r, NULL, EMB_DIM) != 0) goto fail; }
+                if (mr_u8(&r)) { if (mr_raw(&r, scratch, EMB_DIM) != 0) V16F(); }
+                else           { if (mr_raw(&r, NULL, EMB_DIM) != 0) V16F(); }
             }
         }
 
@@ -686,7 +739,7 @@ static inline AI *ai_load_file(const char *path) {
         t->birth_tick      = mr_u64(&r);
         t->last_touch_tick = mr_u64(&r);
         uint32_t na = mr_u32(&r);
-        if (r.err || na > 20000000u) goto fail;
+        if (r.err || na > 20000000u) V16F();
         assoc_seen += na;
 
         /* cap 不进文件：按 token_add_assoc_ex 的「count==cap 时先翻倍再写、
@@ -702,7 +755,7 @@ static inline AI *ai_load_file(const char *path) {
             /* 边直接落进 t->assocs。刻意不用 token_add_assoc_ex：它会把
              * mem_state/birth_tick 重置成默认值，而我们要的是快照里那份。 */
             t->assocs = (AssocEntry *)calloc(t->cap, sizeof *t->assocs);
-            if (!t->assocs) goto fail;
+            if (!t->assocs) V16F();
         }
         t->count = na;      /* 边表已就位（na 可能为 0）；字段在第二遍填 */
         /* 第一遍只把每条边整体跳过：不解析 id，只在第二遍做。
@@ -712,11 +765,11 @@ static inline AI *ai_load_file(const char *path) {
         for (uint32_t j = 0; j < na; ++j) {
             if (has_ctx) {
                 uint8_t ns = mr_u8(&r);
-                if (r.err || ns > TOKEN_CTX_MAX) goto fail;
-                if (mr_raw(&r, NULL, 4u * ns) != 0) goto fail;
+                if (r.err || ns > TOKEN_CTX_MAX) V16F();
+                if (mr_raw(&r, NULL, 4u * ns) != 0) V16F();
                 uint8_t nn = mr_u8(&r);
-                if (r.err || nn > TOKEN_CTX_MAX) goto fail;
-                if (mr_raw(&r, NULL, 4u * nn) != 0) goto fail;
+                if (r.err || nn > TOKEN_CTX_MAX) V16F();
+                if (mr_raw(&r, NULL, 4u * nn) != 0) V16F();
             }
             if (mr_raw(&r, NULL, 4u + 4u + 4u + 4u + 1u + 8u + 8u
                               + (has_role ? 1u : 0u) + (has_topic ? 1u : 0u)
@@ -724,15 +777,15 @@ static inline AI *ai_load_file(const char *path) {
                               + (has_rel  ? (has_wide_rel ? 2u : 1u) : 0u)
                               + (has_nrel ? (has_wide_rel ? 3u : 2u) : 0u)
                               + (mver >= 12u ? 17u : 0u)) != 0)   /* v12：n_tset(1) + 4 个 tick(16)，**定长** */
-                goto fail;
+                V16F();
         }
     }
 
     /* ---- 池层 ---- */
-    uint64_t cur_tick = mr_u64(&r);
+    cur_tick = mr_u64(&r);
     (void)mr_u32(&r);   /* 原 n_entries，读盘后由 hash 重建 */
-    if (r.err) goto fail;
-    if (np->count != n_tok || assoc_seen != (uint64_t)n_assoc) goto fail;
+    if (r.err) V16F();
+    if (np->count != n_tok || assoc_seen != (uint64_t)n_assoc) V16F();
 
     /* 现在池里 0..n-1 齐了，重扫一遍把所有裸 id 换成符号节点* */
     {
@@ -742,32 +795,32 @@ static inline AI *ai_load_file(const char *path) {
         for (uint32_t i = 0; i < n_tok; ++i) {
             uint32_t id = mr_u32(&rr);
             uint32_t nl = mr_u32(&rr);
-            if (rr.err || nl > (1u << 20)) goto fail;
-            if (mr_raw(&rr, NULL, nl) != 0) goto fail;
+            if (rr.err || nl > (1u << 20)) V16F();
+            if (mr_raw(&rr, NULL, nl) != 0) V16F();
             /* §6.299 第二趟重扫：v13 及更早这里还有两段向量要跳过（v14 起没有）。 */
             if (mver <= 13u) {
-                if (mr_u8(&rr)) { if (mr_raw(&rr, NULL, EMB_DIM) != 0) goto fail; }
-                if (mr_u8(&rr)) { if (mr_raw(&rr, NULL, EMB_DIM) != 0) goto fail; }
+                if (mr_u8(&rr)) { if (mr_raw(&rr, NULL, EMB_DIM) != 0) V16F(); }
+                if (mr_u8(&rr)) { if (mr_raw(&rr, NULL, EMB_DIM) != 0) V16F(); }
             }
             (void)mr_u32(&rr); (void)mr_u32(&rr);
             (void)mr_u32(&rr); (void)mr_u32(&rr); (void)mr_u32(&rr);
             (void)mr_u8(&rr); (void)mr_u8(&rr); (void)mr_u8(&rr);
             (void)mr_u64(&rr); (void)mr_u64(&rr);
             uint32_t na = mr_u32(&rr);
-            if (rr.err || na > 20000000u) goto fail;
+            if (rr.err || na > 20000000u) V16F();
             Token *t = pool_token_by_id(np, id);
-            if (!t || t->count != na) goto fail;
+            if (!t || t->count != na) V16F();
             for (uint32_t j = 0; j < na; ++j) {
                 AssocEntry *e = &token_assocs(t)[j];
                 if (has_ctx) {
                     /* 旧格式的语境字段：**跳过去**（字段在 v10 里已删）。
                      * 出厂模型实测全 0 ⇒ 无损；非空的旧文件会少一层条件（登记在案，§6.50）。 */
                     uint8_t ns = mr_u8(&rr);
-                    if (rr.err || ns > TOKEN_CTX_MAX) goto fail;
-                    if (mr_raw(&rr, NULL, 4u * ns) != 0) goto fail;
+                    if (rr.err || ns > TOKEN_CTX_MAX) V16F();
+                    if (mr_raw(&rr, NULL, 4u * ns) != 0) V16F();
                     uint8_t nn = mr_u8(&rr);
-                    if (rr.err || nn > TOKEN_CTX_MAX) goto fail;
-                    if (mr_raw(&rr, NULL, 4u * nn) != 0) goto fail;
+                    if (rr.err || nn > TOKEN_CTX_MAX) V16F();
+                    if (mr_raw(&rr, NULL, 4u * nn) != 0) V16F();
                 }
                 uint32_t main_id = mr_u32(&rr);
                 uint32_t act_id  = mr_u32(&rr);
@@ -797,13 +850,13 @@ static inline AI *ai_load_file(const char *path) {
                     }
                     if (rr.err) goto fail_ai;
                 }
-                if (rr.err) goto fail;
+                if (rr.err) V16F();
                 if (main_id != TOKEN_ID_NONE) {
-                    if (main_id >= np->count) goto fail;
+                    if (main_id >= np->count) V16F();
                     e->main = np->tokens[main_id];
                 }
                 if (act_id != TOKEN_ID_NONE) {
-                    if (act_id >= np->count) goto fail;
+                    if (act_id >= np->count) V16F();
                     e->action = np->tokens[act_id];
                 }
                 if (e->seq != TOKEN_SEQ_NONE && e->seq >= t->next_seq)
@@ -811,7 +864,11 @@ static inline AI *ai_load_file(const char *path) {
             }
         }
     }
+    goto v16_loaded;    /* v15 正常读完：跳过下面的失败标签（否则会直接掉进去）*/
+v16fail:
+    goto fail;
 
+v16_loaded:
     /* 挂起指针（parent / next_in_time / perspective_of） */
     for (size_t i = 0; i < np->count; ++i) {
         Token *t = np->tokens[i];

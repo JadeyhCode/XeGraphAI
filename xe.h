@@ -48,36 +48,52 @@ static inline Token *xe_tokf(AI *ai, const char *fmt, const char *a, const char 
     return xe_tok(ai, buf);
 }
 
-/* 词 -> 空（一个 sense 一个空）*/
+/* 空符号：**本身不携带信息**，名字只是唯一编号（空#n）；
+ * 它的意思完全由它在图里的位置（连了哪些边）决定。 */
+static inline Token *xe_hole_new(AI *ai) {
+    static unsigned long serial = 0;
+    char name[32];
+    for (int tries = 0; tries < 1000000; ++tries) {
+        snprintf(name, sizeof name, "空#%lu", ++serial);
+        if (!pool_find(ai->pool, name)) return xe_tok(ai, name);
+    }
+    return NULL;
+}
+
+static inline Token *xe_sense(Token *hole);
+
+/* 词 -> 空：按"这个词是否已经有一个指向 义:<sense> 的空"来复用（幂等）*/
 static inline Token *xe_hole(AI *ai, Token *word, const char *sense) {
-    if (!word || !sense || !sense[0]) return NULL;
-    Token *hole = xe_tokf(ai, "空:%s:%s", word->name, sense);
+    if (!ai || !word || !sense || !sense[0]) return NULL;
     uint8_t d = xe_rid(ai, XE_REL_HOLE);
-    if (hole && d) xe_link(word, hole, d);
-    Token *sn = xe_tokf(ai, "义:%s", sense, NULL);
     uint8_t ds = xe_rid(ai, XE_REL_SENSE);
-    if (hole && sn && ds) xe_link(hole, sn, ds);
+    if (!d || !ds) return NULL;
+    for (size_t i = 0; i < word->count; ++i) {
+        const AssocEntry *e = &token_assocs_ro(word)[i];
+        if (!e->main || !xe_edge_is(e, d)) continue;
+        Token *s = xe_sense(e->main);
+        if (s && s->name && strncmp(s->name, "义:", 4) == 0 && strcmp(s->name + 4, sense) == 0) return e->main;
+    }
+    Token *hole = xe_hole_new(ai);
+    if (!hole) return NULL;
+    xe_link(word, hole, d);
+    Token *sn = xe_tokf(ai, "义:%s", sense, NULL);
+    if (sn) xe_link(hole, sn, ds);
     return hole;
 }
 
-/* 取某个词的第 n 个空（按空名的字典序稳定；0 = 第一个）*/
+/* 取某个词的第 n 个空：按**建边顺序**（空名字是无意义编号，不能拿来排序）*/
 static inline Token *xe_hole_n(AI *ai, Token *word, int n) {
     if (!ai || !word) return NULL;
     uint8_t d = xe_rid(ai, XE_REL_HOLE);
-    Token *best[8] = {0}; int nb = 0;
+    int k = 0;
     for (size_t i = 0; i < word->count; ++i) {
         const AssocEntry *e = &token_assocs_ro(word)[i];
         if (!e->main || !e->main->name || !xe_edge_is(e, d)) continue;
-        int pos = nb;
-        for (int k = 0; k < nb; ++k)
-            if (strcmp(best[k]->name, e->main->name) > 0) { pos = k; break; }
-        if (nb < 8) {
-            for (int k = nb; k > pos; --k) best[k] = best[k - 1];
-            best[pos] = e->main; nb++;
-        }
+        if (k == n) return e->main;
+        k++;
     }
-    if (n < 0 || n >= nb) return NULL;
-    return best[n];
+    return NULL;
 }
 
 static inline Token *xe_sense(Token *hole) {

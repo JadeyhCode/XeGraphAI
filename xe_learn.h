@@ -96,17 +96,20 @@ static inline int xe_learn_line(AI *ai, XePatch *p, const char *sid, const char 
         if (!ok) return 0;
         if (p) {
             /* 只记**图里真实存在的边**，否则重放只复原一半（词直接连义，空层丢了）*/
-            char wa[256], hb[256], eb[256];
+            char wa[256], eb[256];
             snprintf(wa, sizeof wa, "词:%s", a);
-            snprintf(hb, sizeof hb, "空:%s:%s", a, b);
             snprintf(eb, sizeof eb, "义:%s", b);
+            /* 空符号是匿名编号（空#n）：补丁里记**它们真实的名字**，重放才接得上 */
             if (pats[k].rel == 1) {
-                char ha[256];
-                snprintf(ha, sizeof ha, "空:%s:默认", a);
-                xe_patch_push(p, ha, "需要", hb, 1);
+                Token *ha = xe_hole(ai, xe_tokf(ai, "词:%s", a, NULL), "默认");
+                Token *hb2 = xe_hole(ai, xe_tokf(ai, "词:%s", b, NULL), "默认");
+                if (!ha || !hb2 || !ha->name || !hb2->name) return 0;
+                xe_patch_push(p, ha->name, "需要", hb2->name, 1);
             } else {
-                xe_patch_push(p, wa, "空", hb, 1);
-                xe_patch_push(p, hb, "义", eb, 1);
+                Token *hb2 = xe_hole(ai, xe_tokf(ai, "词:%s", a, NULL), b);
+                if (!hb2 || !hb2->name) return 0;
+                xe_patch_push(p, wa, "空", hb2->name, 1);
+                xe_patch_push(p, hb2->name, "义", eb, 1);
             }
         }
         (void)sid;

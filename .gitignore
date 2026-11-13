@@ -68,3 +68,4 @@ build_xe_metatest
 !tools/build_frames_model.sh
 !tools/build_name_index.sh
 model_frames.bin
+model_io_v16.h.bak

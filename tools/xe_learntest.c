@@ -46,6 +46,7 @@ int main(void) {
         if (e->main == hs && xe_edge_is(e, d)) has_rel = 1;
     }
     ck(has_rel, "空:递归 -> 空:栈（需要）");
+    ck(hr && hr->name && !strstr(hr->name, "递归") && !strstr(hr->name, "栈"), "空符号名字不带语义（空#n）");
 
     /* 学来的东西必须落进补丁，不是只活在内存 */
     printf("      补丁增量 %zu 条\n", p.n);
