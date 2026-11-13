@@ -394,6 +394,7 @@ int main(int argc, char **argv) {\
     printf("%s\n", ok ? "ok f2c" : "FAIL f2c");\
     return ok ? 0 : 1;\
 }
+任务:闰年	排除	或 no
 任务:闰年	关键词	闰年
 任务:闰年	骨架	骨架:闰年
 任务:闰年	用途	命令行给年份，闰年输出 1，否则 0

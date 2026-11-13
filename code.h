@@ -726,7 +726,7 @@ static inline int code_word_known(AI *ai, const char *g) {
  * 一旦出现而命中单元的知识里没有，就说明我们没实现这个需求 ⇒ 拒绝。
  * 比“内容词覆盖率”稳：覆盖率会把隐藏组大批误拒（实测见文档 9.21）。 */
 static inline int code_gate_artifacts(AI *ai, Token *unit, const char *desc, char *missing, size_t cap) {
-    static const char *W[] = {"下标", "索引", "之差", "包含", "有没有", "是不是", "交替", "互为", "个数", NULL};
+    static const char *W[] = {"下标", "索引", "之差", "包含", "交替", "互为", "个数", "之和", NULL};
     if (!ai || !unit || !desc) return 0;
     char kn[8192];
     size_t kl = 0;
@@ -1392,6 +1392,16 @@ static inline int code_synth(AI *ai, const char *desc, char *note, size_t cap) {
             best = t; best_hits = hits; best_len = longest;
         }
     }
+    /* §6.816 窄口径需求词闸门：任务的 knowledge 缺“下标/之差/包含/个数”这类输出形态 ⇒
+     * **不硬答**，而且不算“命中任务”：清掉 best，让后面的单运算链/配方再试一次
+     * （否则「最小值的下标」会被 任务:最值平均 抢走，连正确算子都轮不到）。 */
+    char gate_missing[256] = {0};
+    if (best && code_gate_artifacts(ai, best, nd, gate_missing, sizeof gate_missing) > 0) {
+        if (getenv("AIP_CHAINDBG"))
+            fprintf(stderr, "[gate] 任务 %s 缺 %s ⇒ 让位给链/配方\n", best->name, gate_missing);
+        best = NULL;
+        best_hits = 0;
+    }
     if (!best) {
         /* §6.719 单运算链（数据允许的种类）排在任务之后、配方之前 */
         {
@@ -1457,14 +1467,6 @@ static inline int code_synth(AI *ai, const char *desc, char *note, size_t cap) {
         }
         if (note && cap) snprintf(note, cap, "没有匹配的任务/配方（描述里的关键词在图里一个都没命中）");
         return -1;
-    }
-    /* §6.816 窄口径需求词闸门（默认开）：命中单元的知识里没有“下标/之差/包含/交替”这类输出形态 ⇒ 拒绝 */
-    {
-        char aw[256] = {0};
-        if (code_gate_artifacts(ai, best, nd, aw, sizeof aw) > 0) {
-            if (note && cap) snprintf(note, cap, "描述要 %s，命中的知识里没有 ⇒ 不硬答", aw);
-            return -1;
-        }
     }
     /* §6.815 语义闸门：描述里的内容词在命中单元的知识里覆盖率太低 ⇒ 宁可拒绝 */
     {
