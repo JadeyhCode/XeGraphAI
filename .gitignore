@@ -57,3 +57,5 @@ build_xe
 build_xe_selftest
 build_xe_patchtest
 _t/
+build_xe_sesstest
+_sessions/

@@ -67,6 +67,9 @@ static inline void xe_graph_fp(AI *ai, char *out, size_t cap) {
     for (size_t i = 0; i < nodes; ++i) {
         Token *t = ai->pool->tokens[i];
         if (!t) continue;
+        /* 会话记忆挂在 自由图:* 上，不算"初始图"的一部分：
+         * 否则先装 s1 再装 s2 时指纹会变，补丁会被自己人拒掉。 */
+        if (t->name && strncmp(t->name, "自由图:", 9) == 0) continue;
         for (size_t j = 0; j < t->count; ++j) {
             const AssocEntry *e = &token_assocs_ro(t)[j];
             if (!e->main) continue;
