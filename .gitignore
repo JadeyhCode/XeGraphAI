@@ -55,3 +55,5 @@ __pycache__/
 distill/raw_*.txt
 build_xe
 build_xe_selftest
+build_xe_patchtest
+_t/
