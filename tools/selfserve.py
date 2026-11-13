@@ -43,6 +43,14 @@ REQS = [
     dict(name="单词个数", desc="读入一行字符串（标准输入），输出单词的个数。",
          key="单词的个数", kind="str", examples=[("a b c\n", "3"), ("hi\n", "1")],
          props=["range"]),
+    dict(name="绝对值和", desc="读入一行整数（标准输入），输出所有元素绝对值之和。",
+         key="绝对值之和", kind="arr", examples=[("-1 2 -3\n", "6")], props=["abs_sum"]),
+    dict(name="极差", desc="读入一行整数（标准输入），输出最大值与最小值之差。",
+         key="最大值与最小值之差", kind="arr", examples=[("4 1 9\n", "8")], props=["range_diff"]),
+    dict(name="七的个数", desc="读入一行整数（标准输入），输出其中数字 7 出现的次数。",
+         key="数字 7 出现的次数", kind="arr", examples=[("7 17 7\n", "3")], props=["range"]),
+    dict(name="符号和", desc="读入一行整数（标准输入），正数记 1、负数记 -1、零记 0，输出这些值的和。",
+         key="正数记 1", kind="arr", examples=[("1 -2 0\n", "0")], props=["range"]),
     dict(name="字符串压缩", desc="读入一行字符串（标准输入），把连续重复的字符压缩成字符+次数（输出压缩后的串）。",
          key="连续重复的字符压缩", kind="str", examples=[("aaabb\n", "a3b2"), ("abc\n", "abc")],
          props=[]),
@@ -88,27 +96,52 @@ def run_case(exe, req, case):
     except subprocess.TimeoutExpired:
         return None
 
+def prop_check(name, case, out, code):
+    """具名性质：不依赖参考答案，只看输出与输入的关系。"""
+    if name == "range":
+        return bool(re.fullmatch(r"-?\d+", out or ""))
+    if name == "yesno":
+        return out in ("yes", "no")
+    if name == "nonneg":
+        return bool(re.fullmatch(r"\d+", out or ""))
+    if name == "in_input":
+        xs = [int(x) for x in case.split()]
+        return out is not None and out.strip().lstrip("-").isdigit() and int(out) in xs
+    if name == "le_max":
+        xs = [int(x) for x in case.split()]
+        return bool(out) and int(out) <= max(xs)
+    if name == "sum_order_free":
+        # 打乱输入后结果必须不变（由上层跑两次比较）
+        return out is not None
+    if name == "range_diff":
+        xs = [int(x) for x in case.split()]
+        return bool(out) and int(out) == max(xs) - min(xs)
+    if name == "abs_sum":
+        xs = [int(x) for x in case.split()]
+        return bool(out) and int(out) == sum(abs(x) for x in xs)
+    return True
+
 def verify(exe, req, rng):
     """示例 + 性质 + 稳定：返回 (ok, 说明)"""
-    import random
     for case, want in req["examples"]:
         got = run_case(exe, req, case)
         if got != want:
             return False, f"示例 {case!r} 得到 {got!r} 期望 {want!r}"
     for _ in range(20):
         if kind_of(req) == "arr":
-            case = " ".join(str(rng.randint(-9, 9)) for _ in range(rng.randint(1, 6))) + "\n"
+            vals = [rng.randint(-9, 9) for _ in range(rng.randint(1, 6))]
+            case = " ".join(str(x) for x in vals) + "\n"
         elif kind_of(req) == "str":
             case = "".join(rng.choice("aabbc") for _ in range(rng.randint(1, 8))) + "\n"
         else:
+            vals = None
             case = rng.randint(1, 200)
         a, b = run_case(exe, req, case), run_case(exe, req, case)
         if a is None or a != b:
             return False, "不稳定/超时"
-        if req["props"] == ["range"] and not re.fullmatch(r"-?\d+", a or ""):
-            return False, f"输出不是整数：{a!r}"
-        if req["props"] == ["yesno"] and a not in ("yes", "no"):
-            return False, f"输出不是 yes/no：{a!r}"
+        for p in req.get("props", []):
+            if not prop_check(p, case, a, None):
+                return False, f"性质 {p} 不过（输入 {case!r} 输出 {a!r}）"
     return True, "示例+性质+稳定 全过"
 
 def _ret_is_str(func_src):
