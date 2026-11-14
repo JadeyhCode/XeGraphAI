@@ -55,6 +55,7 @@ def judge(task, rng, tries=4):
     path, out = synth(task["desc"])
     if not path:
         return "refuse", out
+    ok_n = 0
     for _ in range(tries):
         if task["shape"] == "arr":
             v = [rng.randint(-9, 9) for _ in range(rng.randint(1, 7))]
@@ -62,11 +63,17 @@ def judge(task, rng, tries=4):
         else:
             v = "".join(rng.choice("abcXYZ") for _ in range(rng.randint(1, 6)))
             data = (v + "\n").encode()
+        want = task["gold"](v)
+        if want is None:      # 这种输入上任务无定义 ⇒ 跳过（不能算错）
+            continue
         got = run_prog(path, data)
         if got is None:
             return "refuse", out
-        if got.strip() != S.exp_str(task["gold"](v)).strip():
+        if got.strip() != S.exp_str(want).strip():
             return "wrong", out
+        ok_n += 1
+    if ok_n == 0:
+        return "refuse", out
     return "pass", out
 
 

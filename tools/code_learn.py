@@ -19,8 +19,8 @@ OUT = os.path.join(ROOT, "code", "knowledge", "searched.triples")
 # 每题一个**足够窄**的说法（别用“长度/个数”，会劫持别的题）
 LEARN_KW = {
     # blind28（同骨架换比较子/方向）
-    "第二大": "其中第二大",
-    "第三大": "其中第三大",
+    "第二大": "其中第二大的数",
+    "第三大": "其中第三大的数",
     "去重后第二大": "去重后输出第二大",
     "去重后第三小": "去重后输出第三小",
     "从大到小排序": "从大到小排序后输出",
@@ -63,7 +63,8 @@ def triples_for(task, chain):
     exs += ["字符串", "字符"] if task["shape"] == "arr" else ["数组", "整数"]
     for ex in exs:
         lines.append("任务:%s\t排除\t%s" % (name, ex))
-    lines += ["任务:%s\t骨架\t骨架:%s" % (name, name),
+    lines += ["任务:%s\t优先\t1" % name,
+             "任务:%s\t骨架\t骨架:%s" % (name, name),
              "骨架:%s\t语言\tC11" % name,
              "骨架:%s\t依赖\tstdio.h stdlib.h string.h" % name]
     # 续行格式：每行末尾反斜杠（与 skeletons.triples 一致）
@@ -76,7 +77,7 @@ def main(argv):
     dry = "--dry" in argv
     rng = random.Random(20261114)
     rows, out = 0, []
-    TASKS = list(S.BLIND26) + list(S.BLIND27)   # 两套一起学，整份重写（blind28 只由搜索器解，暂不写回）
+    TASKS = list(S.BLIND26) + list(S.BLIND27) + list(S.BLIND28)   # 三套一起学，整份重写
     for t in TASKS:
         chain, why = S.search(t["desc"], rng, t["gold"], t["shape"])
         if not chain:

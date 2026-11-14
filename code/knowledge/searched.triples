@@ -6,6 +6,7 @@
 任务:搜索-极差	排除	每行
 任务:搜索-极差	排除	字符串
 任务:搜索-极差	排除	字符
+任务:搜索-极差	优先	1
 任务:搜索-极差	骨架	骨架:搜索-极差
 骨架:搜索-极差	语言	C11
 骨架:搜索-极差	依赖	stdio.h stdlib.h string.h
@@ -36,6 +37,7 @@ int main(void) {\
 任务:搜索-平方和	排除	每行
 任务:搜索-平方和	排除	字符串
 任务:搜索-平方和	排除	字符
+任务:搜索-平方和	优先	1
 任务:搜索-平方和	骨架	骨架:搜索-平方和
 骨架:搜索-平方和	语言	C11
 骨架:搜索-平方和	依赖	stdio.h stdlib.h string.h
@@ -66,6 +68,7 @@ int main(void) {\
 任务:搜索-偶数个数	排除	每行
 任务:搜索-偶数个数	排除	字符串
 任务:搜索-偶数个数	排除	字符
+任务:搜索-偶数个数	优先	1
 任务:搜索-偶数个数	骨架	骨架:搜索-偶数个数
 骨架:搜索-偶数个数	语言	C11
 骨架:搜索-偶数个数	依赖	stdio.h stdlib.h string.h
@@ -96,6 +99,7 @@ int main(void) {\
 任务:搜索-排序后最大	排除	每行
 任务:搜索-排序后最大	排除	字符串
 任务:搜索-排序后最大	排除	字符
+任务:搜索-排序后最大	优先	1
 任务:搜索-排序后最大	骨架	骨架:搜索-排序后最大
 骨架:搜索-排序后最大	语言	C11
 骨架:搜索-排序后最大	依赖	stdio.h stdlib.h string.h
@@ -126,6 +130,7 @@ int main(void) {\
 任务:搜索-加三后平均	排除	每行
 任务:搜索-加三后平均	排除	字符串
 任务:搜索-加三后平均	排除	字符
+任务:搜索-加三后平均	优先	1
 任务:搜索-加三后平均	骨架	骨架:搜索-加三后平均
 骨架:搜索-加三后平均	语言	C11
 骨架:搜索-加三后平均	依赖	stdio.h stdlib.h string.h
@@ -157,6 +162,7 @@ int main(void) {\
 任务:搜索-大写后长度	排除	每行
 任务:搜索-大写后长度	排除	数组
 任务:搜索-大写后长度	排除	整数
+任务:搜索-大写后长度	优先	1
 任务:搜索-大写后长度	骨架	骨架:搜索-大写后长度
 骨架:搜索-大写后长度	语言	C11
 骨架:搜索-大写后长度	依赖	stdio.h stdlib.h string.h
@@ -187,6 +193,7 @@ int main(void) {\
 任务:搜索-反转后取最小	排除	每行
 任务:搜索-反转后取最小	排除	字符串
 任务:搜索-反转后取最小	排除	字符
+任务:搜索-反转后取最小	优先	1
 任务:搜索-反转后取最小	骨架	骨架:搜索-反转后取最小
 骨架:搜索-反转后取最小	语言	C11
 骨架:搜索-反转后取最小	依赖	stdio.h stdlib.h string.h
@@ -217,6 +224,7 @@ int main(void) {\
 任务:搜索-乘二后求和	排除	每行
 任务:搜索-乘二后求和	排除	字符串
 任务:搜索-乘二后求和	排除	字符
+任务:搜索-乘二后求和	优先	1
 任务:搜索-乘二后求和	骨架	骨架:搜索-乘二后求和
 骨架:搜索-乘二后求和	语言	C11
 骨架:搜索-乘二后求和	依赖	stdio.h stdlib.h string.h
@@ -248,6 +256,7 @@ int main(void) {\
 任务:搜索-去重	排除	每行
 任务:搜索-去重	排除	字符串
 任务:搜索-去重	排除	字符
+任务:搜索-去重	优先	1
 任务:搜索-去重	骨架	骨架:搜索-去重
 骨架:搜索-去重	语言	C11
 骨架:搜索-去重	依赖	stdio.h stdlib.h string.h
@@ -278,6 +287,7 @@ int main(void) {\
 任务:搜索-去重后长度	排除	每行
 任务:搜索-去重后长度	排除	字符串
 任务:搜索-去重后长度	排除	字符
+任务:搜索-去重后长度	优先	1
 任务:搜索-去重后长度	骨架	骨架:搜索-去重后长度
 骨架:搜索-去重后长度	语言	C11
 骨架:搜索-去重后长度	依赖	stdio.h stdlib.h string.h
@@ -309,6 +319,7 @@ int main(void) {\
 任务:搜索-去重后第二小	排除	每行
 任务:搜索-去重后第二小	排除	字符串
 任务:搜索-去重后第二小	排除	字符
+任务:搜索-去重后第二小	优先	1
 任务:搜索-去重后第二小	骨架	骨架:搜索-去重后第二小
 骨架:搜索-去重后第二小	语言	C11
 骨架:搜索-去重后第二小	依赖	stdio.h stdlib.h string.h
@@ -340,6 +351,7 @@ int main(void) {\
 任务:搜索-前缀和最大	排除	每行
 任务:搜索-前缀和最大	排除	字符串
 任务:搜索-前缀和最大	排除	字符
+任务:搜索-前缀和最大	优先	1
 任务:搜索-前缀和最大	骨架	骨架:搜索-前缀和最大
 骨架:搜索-前缀和最大	语言	C11
 骨架:搜索-前缀和最大	依赖	stdio.h stdlib.h string.h
@@ -371,6 +383,7 @@ int main(void) {\
 任务:搜索-前缀和最小	排除	每行
 任务:搜索-前缀和最小	排除	字符串
 任务:搜索-前缀和最小	排除	字符
+任务:搜索-前缀和最小	优先	1
 任务:搜索-前缀和最小	骨架	骨架:搜索-前缀和最小
 骨架:搜索-前缀和最小	语言	C11
 骨架:搜索-前缀和最小	依赖	stdio.h stdlib.h string.h
@@ -402,6 +415,7 @@ int main(void) {\
 任务:搜索-乘二后极差	排除	每行
 任务:搜索-乘二后极差	排除	字符串
 任务:搜索-乘二后极差	排除	字符
+任务:搜索-乘二后极差	优先	1
 任务:搜索-乘二后极差	骨架	骨架:搜索-乘二后极差
 骨架:搜索-乘二后极差	语言	C11
 骨架:搜索-乘二后极差	依赖	stdio.h stdlib.h string.h
@@ -433,6 +447,7 @@ int main(void) {\
 任务:搜索-加五后方差	排除	每行
 任务:搜索-加五后方差	排除	字符串
 任务:搜索-加五后方差	排除	字符
+任务:搜索-加五后方差	优先	1
 任务:搜索-加五后方差	骨架	骨架:搜索-加五后方差
 骨架:搜索-加五后方差	语言	C11
 骨架:搜索-加五后方差	依赖	stdio.h stdlib.h string.h
@@ -463,6 +478,7 @@ int main(void) {\
 任务:搜索-反转后前缀和最大	排除	每行
 任务:搜索-反转后前缀和最大	排除	字符串
 任务:搜索-反转后前缀和最大	排除	字符
+任务:搜索-反转后前缀和最大	优先	1
 任务:搜索-反转后前缀和最大	骨架	骨架:搜索-反转后前缀和最大
 骨架:搜索-反转后前缀和最大	语言	C11
 骨架:搜索-反转后前缀和最大	依赖	stdio.h stdlib.h string.h
@@ -485,6 +501,257 @@ int main(void) {\
     { for (int i = 0, j = n - 1; i < j; i++, j--) { long t = v[i]; v[i] = v[j]; v[j] = t; } }\
     { for (int i = 1; i < n; i++) v[i] += v[i - 1]; }\
     { x = v[0]; for (int i = 1; i < n; i++) if (v[i] > x) x = v[i]; }\
+    printf("%ld\n", x);\
+    return 0;\
+}
+任务:搜索-第二大	关键词	其中第二大的数
+任务:搜索-第二大	排除	命令行参数
+任务:搜索-第二大	排除	1 到
+任务:搜索-第二大	排除	第一行
+任务:搜索-第二大	排除	每行
+任务:搜索-第二大	排除	字符串
+任务:搜索-第二大	排除	字符
+任务:搜索-第二大	优先	1
+任务:搜索-第二大	骨架	骨架:搜索-第二大
+骨架:搜索-第二大	语言	C11
+骨架:搜索-第二大	依赖	stdio.h stdlib.h string.h
+骨架:搜索-第二大	代码	#include <stdio.h>\
+#include <stdlib.h>\
+#include <string.h>\
+static int cmp_long(const void *a, const void *b) {\
+    long x = *(const long *)a, y = *(const long *)b;\
+    return (x > y) - (x < y);\
+}\
+static int cmp_desc(const void *a, const void *b) {\
+    long x = *(const long *)a, y = *(const long *)b;\
+    return (x < y) - (x > y);\
+}\
+int main(void) {\
+    long v[256]; int n = 0;\
+    while (n < 256 && scanf("%ld", &v[n]) == 1) n++;\
+    if (n <= 0) return 0;\
+    long x = 0; (void)x;\
+    { qsort(v, (size_t)n, sizeof v[0], cmp_desc); x = v[2 - 1]; }\
+    printf("%ld\n", x);\
+    return 0;\
+}
+任务:搜索-第三大	关键词	其中第三大的数
+任务:搜索-第三大	排除	命令行参数
+任务:搜索-第三大	排除	1 到
+任务:搜索-第三大	排除	第一行
+任务:搜索-第三大	排除	每行
+任务:搜索-第三大	排除	字符串
+任务:搜索-第三大	排除	字符
+任务:搜索-第三大	优先	1
+任务:搜索-第三大	骨架	骨架:搜索-第三大
+骨架:搜索-第三大	语言	C11
+骨架:搜索-第三大	依赖	stdio.h stdlib.h string.h
+骨架:搜索-第三大	代码	#include <stdio.h>\
+#include <stdlib.h>\
+#include <string.h>\
+static int cmp_long(const void *a, const void *b) {\
+    long x = *(const long *)a, y = *(const long *)b;\
+    return (x > y) - (x < y);\
+}\
+static int cmp_desc(const void *a, const void *b) {\
+    long x = *(const long *)a, y = *(const long *)b;\
+    return (x < y) - (x > y);\
+}\
+int main(void) {\
+    long v[256]; int n = 0;\
+    while (n < 256 && scanf("%ld", &v[n]) == 1) n++;\
+    if (n <= 0) return 0;\
+    long x = 0; (void)x;\
+    { qsort(v, (size_t)n, sizeof v[0], cmp_desc); x = v[3 - 1]; }\
+    printf("%ld\n", x);\
+    return 0;\
+}
+任务:搜索-去重后第二大	关键词	去重后输出第二大
+任务:搜索-去重后第二大	排除	命令行参数
+任务:搜索-去重后第二大	排除	1 到
+任务:搜索-去重后第二大	排除	第一行
+任务:搜索-去重后第二大	排除	每行
+任务:搜索-去重后第二大	排除	字符串
+任务:搜索-去重后第二大	排除	字符
+任务:搜索-去重后第二大	优先	1
+任务:搜索-去重后第二大	骨架	骨架:搜索-去重后第二大
+骨架:搜索-去重后第二大	语言	C11
+骨架:搜索-去重后第二大	依赖	stdio.h stdlib.h string.h
+骨架:搜索-去重后第二大	代码	#include <stdio.h>\
+#include <stdlib.h>\
+#include <string.h>\
+static int cmp_long(const void *a, const void *b) {\
+    long x = *(const long *)a, y = *(const long *)b;\
+    return (x > y) - (x < y);\
+}\
+static int cmp_desc(const void *a, const void *b) {\
+    long x = *(const long *)a, y = *(const long *)b;\
+    return (x < y) - (x > y);\
+}\
+int main(void) {\
+    long v[256]; int n = 0;\
+    while (n < 256 && scanf("%ld", &v[n]) == 1) n++;\
+    if (n <= 0) return 0;\
+    long x = 0; (void)x;\
+    { { qsort(v, (size_t)n, sizeof v[0], cmp_long); int m = 0; for (int i = 0; i < n; i++) if (i == 0 || v[i] != v[i - 1]) v[m++] = v[i]; n = m; } }\
+    { qsort(v, (size_t)n, sizeof v[0], cmp_desc); x = v[2 - 1]; }\
+    printf("%ld\n", x);\
+    return 0;\
+}
+任务:搜索-去重后第三小	关键词	去重后输出第三小
+任务:搜索-去重后第三小	排除	命令行参数
+任务:搜索-去重后第三小	排除	1 到
+任务:搜索-去重后第三小	排除	第一行
+任务:搜索-去重后第三小	排除	每行
+任务:搜索-去重后第三小	排除	字符串
+任务:搜索-去重后第三小	排除	字符
+任务:搜索-去重后第三小	优先	1
+任务:搜索-去重后第三小	骨架	骨架:搜索-去重后第三小
+骨架:搜索-去重后第三小	语言	C11
+骨架:搜索-去重后第三小	依赖	stdio.h stdlib.h string.h
+骨架:搜索-去重后第三小	代码	#include <stdio.h>\
+#include <stdlib.h>\
+#include <string.h>\
+static int cmp_long(const void *a, const void *b) {\
+    long x = *(const long *)a, y = *(const long *)b;\
+    return (x > y) - (x < y);\
+}\
+static int cmp_desc(const void *a, const void *b) {\
+    long x = *(const long *)a, y = *(const long *)b;\
+    return (x < y) - (x > y);\
+}\
+int main(void) {\
+    long v[256]; int n = 0;\
+    while (n < 256 && scanf("%ld", &v[n]) == 1) n++;\
+    if (n <= 0) return 0;\
+    long x = 0; (void)x;\
+    { { qsort(v, (size_t)n, sizeof v[0], cmp_long); int m = 0; for (int i = 0; i < n; i++) if (i == 0 || v[i] != v[i - 1]) v[m++] = v[i]; n = m; } }\
+    { qsort(v, (size_t)n, sizeof v[0], cmp_long); x = v[3 - 1]; }\
+    printf("%ld\n", x);\
+    return 0;\
+}
+任务:搜索-从大到小排序	关键词	从大到小排序后输出
+任务:搜索-从大到小排序	排除	命令行参数
+任务:搜索-从大到小排序	排除	1 到
+任务:搜索-从大到小排序	排除	第一行
+任务:搜索-从大到小排序	排除	每行
+任务:搜索-从大到小排序	排除	字符串
+任务:搜索-从大到小排序	排除	字符
+任务:搜索-从大到小排序	优先	1
+任务:搜索-从大到小排序	骨架	骨架:搜索-从大到小排序
+骨架:搜索-从大到小排序	语言	C11
+骨架:搜索-从大到小排序	依赖	stdio.h stdlib.h string.h
+骨架:搜索-从大到小排序	代码	#include <stdio.h>\
+#include <stdlib.h>\
+#include <string.h>\
+static int cmp_long(const void *a, const void *b) {\
+    long x = *(const long *)a, y = *(const long *)b;\
+    return (x > y) - (x < y);\
+}\
+static int cmp_desc(const void *a, const void *b) {\
+    long x = *(const long *)a, y = *(const long *)b;\
+    return (x < y) - (x > y);\
+}\
+int main(void) {\
+    long v[256]; int n = 0;\
+    while (n < 256 && scanf("%ld", &v[n]) == 1) n++;\
+    if (n <= 0) return 0;\
+    long x = 0; (void)x;\
+    { qsort(v, (size_t)n, sizeof v[0], cmp_desc); }\
+    for (int i = 0; i < n; i++) printf("%ld%c", v[i], i + 1 == n ? 10 : 32);\
+    return 0;\
+}
+任务:搜索-降序后第二个	关键词	排序后输出第二个
+任务:搜索-降序后第二个	排除	命令行参数
+任务:搜索-降序后第二个	排除	1 到
+任务:搜索-降序后第二个	排除	第一行
+任务:搜索-降序后第二个	排除	每行
+任务:搜索-降序后第二个	排除	字符串
+任务:搜索-降序后第二个	排除	字符
+任务:搜索-降序后第二个	优先	1
+任务:搜索-降序后第二个	骨架	骨架:搜索-降序后第二个
+骨架:搜索-降序后第二个	语言	C11
+骨架:搜索-降序后第二个	依赖	stdio.h stdlib.h string.h
+骨架:搜索-降序后第二个	代码	#include <stdio.h>\
+#include <stdlib.h>\
+#include <string.h>\
+static int cmp_long(const void *a, const void *b) {\
+    long x = *(const long *)a, y = *(const long *)b;\
+    return (x > y) - (x < y);\
+}\
+static int cmp_desc(const void *a, const void *b) {\
+    long x = *(const long *)a, y = *(const long *)b;\
+    return (x < y) - (x > y);\
+}\
+int main(void) {\
+    long v[256]; int n = 0;\
+    while (n < 256 && scanf("%ld", &v[n]) == 1) n++;\
+    if (n <= 0) return 0;\
+    long x = 0; (void)x;\
+    { qsort(v, (size_t)n, sizeof v[0], cmp_desc); x = v[2 - 1]; }\
+    printf("%ld\n", x);\
+    return 0;\
+}
+任务:搜索-反转后第二大	关键词	反转后输出第二大
+任务:搜索-反转后第二大	排除	命令行参数
+任务:搜索-反转后第二大	排除	1 到
+任务:搜索-反转后第二大	排除	第一行
+任务:搜索-反转后第二大	排除	每行
+任务:搜索-反转后第二大	排除	字符串
+任务:搜索-反转后第二大	排除	字符
+任务:搜索-反转后第二大	优先	1
+任务:搜索-反转后第二大	骨架	骨架:搜索-反转后第二大
+骨架:搜索-反转后第二大	语言	C11
+骨架:搜索-反转后第二大	依赖	stdio.h stdlib.h string.h
+骨架:搜索-反转后第二大	代码	#include <stdio.h>\
+#include <stdlib.h>\
+#include <string.h>\
+static int cmp_long(const void *a, const void *b) {\
+    long x = *(const long *)a, y = *(const long *)b;\
+    return (x > y) - (x < y);\
+}\
+static int cmp_desc(const void *a, const void *b) {\
+    long x = *(const long *)a, y = *(const long *)b;\
+    return (x < y) - (x > y);\
+}\
+int main(void) {\
+    long v[256]; int n = 0;\
+    while (n < 256 && scanf("%ld", &v[n]) == 1) n++;\
+    if (n <= 0) return 0;\
+    long x = 0; (void)x;\
+    { qsort(v, (size_t)n, sizeof v[0], cmp_desc); x = v[2 - 1]; }\
+    printf("%ld\n", x);\
+    return 0;\
+}
+任务:搜索-前缀和第二大	关键词	前缀和里的第二大
+任务:搜索-前缀和第二大	排除	命令行参数
+任务:搜索-前缀和第二大	排除	1 到
+任务:搜索-前缀和第二大	排除	第一行
+任务:搜索-前缀和第二大	排除	每行
+任务:搜索-前缀和第二大	排除	字符串
+任务:搜索-前缀和第二大	排除	字符
+任务:搜索-前缀和第二大	优先	1
+任务:搜索-前缀和第二大	骨架	骨架:搜索-前缀和第二大
+骨架:搜索-前缀和第二大	语言	C11
+骨架:搜索-前缀和第二大	依赖	stdio.h stdlib.h string.h
+骨架:搜索-前缀和第二大	代码	#include <stdio.h>\
+#include <stdlib.h>\
+#include <string.h>\
+static int cmp_long(const void *a, const void *b) {\
+    long x = *(const long *)a, y = *(const long *)b;\
+    return (x > y) - (x < y);\
+}\
+static int cmp_desc(const void *a, const void *b) {\
+    long x = *(const long *)a, y = *(const long *)b;\
+    return (x < y) - (x > y);\
+}\
+int main(void) {\
+    long v[256]; int n = 0;\
+    while (n < 256 && scanf("%ld", &v[n]) == 1) n++;\
+    if (n <= 0) return 0;\
+    long x = 0; (void)x;\
+    { for (int i = 1; i < n; i++) v[i] += v[i - 1]; }\
+    { qsort(v, (size_t)n, sizeof v[0], cmp_desc); x = v[2 - 1]; }\
     printf("%ld\n", x);\
     return 0;\
 }
