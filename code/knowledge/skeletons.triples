@@ -170,6 +170,8 @@ int main(int argc, char **argv) {\
     printf("%s\n", ok ? "ok wc" : "FAIL wc");\
     return ok ? 0 : 1;\
 }
+任务:冒泡排序	排除	最大值
+任务:冒泡排序	排除	输出最大
 任务:冒泡排序	排除	是否
 任务:冒泡排序	排除	判断
 任务:冒泡排序	排除	去重
