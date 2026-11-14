@@ -372,10 +372,10 @@ def _set_of(argv):
 
 
 BLIND28 = [
-    dict(name="第二大", shape="arr", desc="读入一行整数（标准输入），输出其中第二大的数。",
-         gold=lambda a: sorted(a, reverse=True)[1] if len(a) > 1 else None),
-    dict(name="第三大", shape="arr", desc="读入一行整数（标准输入），输出其中第三大的数。",
-         gold=lambda a: sorted(a, reverse=True)[2] if len(a) > 2 else None),
+    dict(name="第二大", shape="arr", desc="读入一行整数（标准输入），输出其中第二大的数（重复的算一次）。",
+         gold=lambda a: sorted(set(a), reverse=True)[1] if len(set(a)) > 1 else None),
+    dict(name="第三大", shape="arr", desc="读入一行整数（标准输入），输出其中第三大的数（重复的算一次）。",
+         gold=lambda a: sorted(set(a), reverse=True)[2] if len(set(a)) > 2 else None),
     dict(name="去重后第二大", shape="arr", desc="读入一行整数（标准输入），去重后输出第二大的数。",
          gold=lambda a: sorted(set(a), reverse=True)[1] if len(set(a)) > 1 else None),
     dict(name="去重后第三小", shape="arr", desc="读入一行整数（标准输入），去重后输出第三小的数。",
@@ -384,10 +384,10 @@ BLIND28 = [
          gold=lambda a: sorted(a, reverse=True)),
     dict(name="降序后第二个", shape="arr", desc="读入一行整数（标准输入），从大到小排序后输出第二个数。",
          gold=lambda a: sorted(a, reverse=True)[1] if len(a) > 1 else None),
-    dict(name="反转后第二大", shape="arr", desc="读入一行整数（标准输入），反转后输出第二大的数。",
-         gold=lambda a: sorted(a, reverse=True)[1] if len(a) > 1 else None),
-    dict(name="前缀和第二大", shape="arr", desc="读入一行整数（标准输入），输出前缀和里的第二大的数。",
-         gold=lambda a: sorted(_pref(a), reverse=True)[1] if len(a) > 1 else None),
+    dict(name="反转后第二大", shape="arr", desc="读入一行整数（标准输入），反转后输出第二大的数（重复的算一次）。",
+         gold=lambda a: sorted(set(a), reverse=True)[1] if len(set(a)) > 1 else None),
+    dict(name="前缀和第二大", shape="arr", desc="读入一行整数（标准输入），输出前缀和里的第二大的数（重复的算一次）。",
+         gold=lambda a: sorted(set(_pref(a)), reverse=True)[1] if len(set(_pref(a))) > 1 else None),
 ]
 
 
