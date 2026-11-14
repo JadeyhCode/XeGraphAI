@@ -1202,7 +1202,18 @@ static inline int code_chain(AI *ai, const char *desc, int min_ops, int need_par
     if (getenv("AIP_CHAINDBG")) fprintf(stderr, "[chain] 覆盖后 n=%d (min=%d)\n", n, min_ops);
     if (n < min_ops) return -1;
     for (int i = 1; i < n; ++i) {
-        for (int j = i; j > 0 && pos[j] < pos[j - 1]; --j) {
+        /* §6.835 稳定排序：同位置时**长关键词优先**，再按名字字典序 —— 去掉对 token 池顺序的依赖。
+         * 为什么：往模型里灌任何新知识都会改变 token 下标，原先“同位置先到先得”会让结果漂移
+         * （实测：只加几条 改写 关系，隐藏组“数组翻转”一族就变了）。 */
+        for (int j = i; j > 0; --j) {
+            int swap = 0;
+            if (pos[j] < pos[j - 1]) swap = 1;
+            else if (pos[j] == pos[j - 1]) {
+                if (mlen[j] > mlen[j - 1]) swap = 1;
+                else if (mlen[j] == mlen[j - 1] && ops[j]->name && ops[j - 1]->name &&
+                         strcmp(ops[j]->name, ops[j - 1]->name) < 0) swap = 1;
+            }
+            if (!swap) break;
             Token *to = ops[j]; ops[j] = ops[j - 1]; ops[j - 1] = to;
             const char *ts = stmts[j]; stmts[j] = stmts[j - 1]; stmts[j - 1] = ts;
             size_t tp = pos[j]; pos[j] = pos[j - 1]; pos[j - 1] = tp;
