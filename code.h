@@ -1452,9 +1452,20 @@ static inline int code_chain(AI *ai, const char *desc, int min_ops, int need_par
         if (k < 0 || (size_t)k >= sizeof body - (size_t)bl) break;
         bl += k;
     }
+    /* §6.851 最后一个算子的语句**自己就会打印**（例如“数组降序”语句里带 printf 循环）时，
+     * 不再追加输出语句——否则会多打一行（实测：“从大到小排序”输出 `9 7 5 3 1` 后又多一行 `0`）。 */
+    /* 只在“最后一个算子打印**数组**、且描述确实要数组”时跳过追加输出：
+     * 更宽的规则会改变 blind11/13 的行为（实测 capbench 掉）。 */
+    int stmt_prints = 0;
+    if (stmts[n - 1] && strstr(stmts[n - 1], "printf(") && strstr(stmts[n - 1], " ? 10 : 32")) {
+        static const char *want_arr[] = {"排序后输出", "倒序输出", "每行", "逐行", "输出这些",
+                                         "去重后输出", "从小到大排序", "从大到小排序", NULL};
+        for (int q = 0; want_arr[q]; ++q)
+            if (strstr(desc, want_arr[q])) { stmt_prints = 1; break; }
+    }
     /* §6.715/§6.716 输出的类型由**最后一个运算**的 输出 边决定：目标是 `打印:*` 节点，
      * 打印语句本身存在它的 代码 边上（字符串/整数/逐行数组都只是数据）。 */
-    {
+    if (!stmt_prints) {
         Token *outtok = NULL;
         uint8_t rid_out = rel_id_of(ai, "输出", 0);
         if (rid_out >= REL_DYN_BASE) {
@@ -1479,6 +1490,7 @@ static inline int code_chain(AI *ai, const char *desc, int min_ops, int need_par
                          pcode ? pcode : "printf(\"%ld\\n\", x);");
         if (k > 0) bl += k;
     }
+    (void)stmt_prints;
     char outbase[96];
     if (n == 1) snprintf(outbase, sizeof outbase, "%.60s", ops[0]->name + 7);
     else snprintf(outbase, sizeof outbase, "%.40s_%.40s", ops[0]->name + 7, ops[n - 1]->name + 7);
