@@ -59,7 +59,33 @@ cat > "$MT" <<EOF
 EOF
 run_case mul "$MT" "每个数乘以五" "5 10 15" 0
 
+LT=_t/gen/inst_l.triples
+cat > "$LT" <<EOF
+运算:第2大	关键词	第二大
+运算:第2大	语句	{ qsort(v, (size_t)n, sizeof v[0], cmp_desc); long u[64]; int m = 0; for (int i = 0; i < n; i++) if (i == 0 || v[i] != v[i - 1]) u[m++] = v[i]; x = (m >= 2) ? u[1] : u[m > 0 ? m - 1 : 0]; }
+运算:第2大	用	片段:cmp_desc
+运算:第2大	模板	模板:标准输入整数数组
+运算:第3大	关键词	第三大
+运算:第3大	语句	{ qsort(v, (size_t)n, sizeof v[0], cmp_desc); long u[64]; int m = 0; for (int i = 0; i < n; i++) if (i == 0 || v[i] != v[i - 1]) u[m++] = v[i]; x = (m >= 3) ? u[2] : u[m > 0 ? m - 1 : 0]; }
+运算:第3大	用	片段:cmp_desc
+运算:第3大	模板	模板:标准输入整数数组
+EOF
+run_case kthL "$LT" "第五大" "1" 0
+
+AT=_t/gen/inst_a.triples
+cat > "$AT" <<EOF
+运算:每数加2	关键词	每个数加上二
+运算:每数加2	语句	{ for (int i = 0; i < n; i++) v[i] += 2; }
+运算:每数加2	输出	打印:空格数组
+运算:每数加2	模板	模板:标准输入整数数组
+运算:每数加3	关键词	每个数加上三
+运算:每数加3	语句	{ for (int i = 0; i < n; i++) v[i] += 3; }
+运算:每数加3	输出	打印:空格数组
+运算:每数加3	模板	模板:标准输入整数数组
+EOF
+run_case add "$AT" "每个数加上五" "6 7 8" 0
+
 AFTER=$(sha256sum code/code_model.bin | cut -d" " -f1)
 [ "$BEFORE" = "$AFTER" ] || { printf "  [FAIL] 仓库模型被改了\n"; fails=1; }
-[ "$fails" -eq 0 ] && printf "PASS codegeneral（两个族都从两条实例归纳出参数化概念，没教过的参数都能用）\n" || printf "FAIL codegeneral\n"
+[ "$fails" -eq 0 ] && printf "PASS codegeneral（四个族都从两条实例归纳出参数化概念，没教过的参数都能用）\n" || printf "FAIL codegeneral\n"
 [ "$fails" -eq 0 ]
