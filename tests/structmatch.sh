@@ -6,11 +6,6 @@
 #
 # 自带模型副本；二进制走 tests/prebuilt.sh（沙箱里没有仓库根的 build_aip）。
 set -u
-# 整包是并行的、沙箱里模型构建路径不同（本地过/沙箱挂，待查）⇒ 默认跳过。
-if [ "${AIP_SERIAL:-0}" != "1" ] && [ "${AIP_CAPBENCH:-0}" != "1" ]; then
-    printf "SKIP structmatch（要独占 _t/work：手动跑，或 AIP_SERIAL=1 sh tests/all.sh）\n"
-    exit 0
-fi
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 cd "$ROOT"
 mkdir -p _t/work

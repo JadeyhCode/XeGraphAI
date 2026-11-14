@@ -152,6 +152,14 @@ pool_task_setup() {   # $1=套件名（没用上） $2=worker 号
         [ -f "$ROOT/code/knowledge/compose.triples" ] && cp "$ROOT/code/knowledge/compose.triples" "$SB/code/knowledge/"
         # §6.712 片段知识（1 MB 量级）：带上，否则沙箱里默认图没有 ::code frag
         [ -f "$ROOT/code/knowledge/c2.triples" ] && cp "$ROOT/code/knowledge/c2.triples" "$SB/code/knowledge/"
+        # §6.838 其余**小**知识文件（归纳概念/操作类/改写/人工依赖）也要带 —— 只带
+        # skeletons+compose 会让沙箱里的模型缺这些边（实测 structmatch 在整包挂、单跑过）。
+        for f in "$ROOT"/code/knowledge/*.triples; do
+            [ -f "$f" ] || continue
+            sz=$(wc -c < "$f")
+            [ "$sz" -lt 2000000 ] || continue
+            cp "$f" "$SB/code/knowledge/$(basename "$f")"
+        done
     fi
     cp "$ROOT/model.bin" "$SB/model.bin"
     cp "$ROOT/build_aip" "$SB/build_aip"
