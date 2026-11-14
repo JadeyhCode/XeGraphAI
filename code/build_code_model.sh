@@ -31,7 +31,7 @@ cp model.bin "$OUT.work"
 cp "$OUT.work" "$OUT.tmp.bin"
 printf '::ingest code/knowledge/skeletons.triples\n::ingest code/knowledge/compose.triples\n::ingest code/knowledge/capi.triples\n::save %s\n::quit\n' "$OUT" > _t/codebuild.in
 # §6.834/§6.837 说法归一 + 操作类词表（存在就一起灌）
-for f in code/knowledge/opclass.triples code/knowledge/rewrite.triples code/knowledge/prim.triples; do
+for f in code/knowledge/opclass.triples code/knowledge/rewrite.triples code/knowledge/prim.triples code/knowledge/searched.triples; do
     [ -s "$f" ] && sed -i "1i ::ingest $f" _t/codebuild.in
 done
 # §6.825 反统一归纳出来的参数化概念（存在就一起灌）
