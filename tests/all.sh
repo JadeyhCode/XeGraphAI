@@ -99,7 +99,9 @@ gcc -std=c11 -O2 -Wall -Wextra -Wpedantic -Werror -o build_aip main.c -lm
 echo "BUILD OK"
 # 预置件的"新鲜度"凭据：源码 + 全部头文件的内容哈希（口径同 tests/probes_build.sh）。
 # 套件那头对不上就自己编（防"拿旧二进制量出新结论"）。
-AIP_PREBUILT_HASH=$(cat "$ROOT"/*.h "$ROOT"/*.c | md5sum | cut -d' ' -f1)
+# 预置件的哈希必须**包含知识文件**：知识变了、源码没变时，沙箱里会用旧模型（实测踩过：
+# structmatch/codeknow/selfserve 在整包里挂，单跑却过）。
+AIP_PREBUILT_HASH=$( { cat "$ROOT"/*.h "$ROOT"/*.c; cat "$ROOT"/code/knowledge/*.triples 2>/dev/null; } | md5sum | cut -d' ' -f1)
 export AIP_PREBUILT_HASH
 # **看护的看护**：清单/脚本自身的写法（管道吃退出码 / 没兜住的 grep 赋值 / 脚本与清单对不上）。
 # 这一轮连着扫出两个真洞（C 级套件的失败被 `| tail` 吃掉、`set -e` 下 grep 赋值让整套静默消失），

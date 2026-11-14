@@ -1,0 +1,20 @@
+组          通过 拒绝 答错
+hidden          328      0      0
+blind11          12      0      0
+blind12           8      0      0
+blind13           8      0      0
+blind14           8      0      0
+blind15           8      0      0
+blind16           8      0      0
+blind17           8      0      0
+blind18           8      0      0
+blind19           7      1      0
+blind20           8      0      0
+blind21           3      2      3
+blind22           8      0      0
+blind23           8      0      0
+blind24           8      0      0
+blind25           8      0      0
+
+== 与基线比 ==
+PASS capbench（没有组低于基线）

@@ -272,3 +272,4 @@ selfserve|sh tests/selfserve.sh
 blind22|python3 tools/code_blind22.py
 codegeneral|sh tests/codegeneral.sh
 selfmanager|sh tests/selfmanager.sh
+structmatch|sh tests/structmatch.sh

@@ -5659,6 +5659,31 @@ int main(int argc, char **argv) {
                     if (!*d) { printf("[用法] ::code synth <中文任务描述>\n"); continue; }
                     char nb[512] = {0};
                     int sr = code_synth(a->brain, d, nb, sizeof nb);
+                    /* §6.837/§6.834 **只在“确实没匹配”时**加两道兜底：操作类归一 → 同义改写。 */
+                    if (sr == -1 && strstr(nb, "没有匹配")) {
+                        char cn[1024];
+                        if (code_struct_canon(a->brain, d, cn, sizeof cn)) {
+                            char nb3[512] = {0};
+                            int sr3 = code_synth(a->brain, cn, nb3, sizeof nb3);
+                            if (sr3 != -1) {
+                                printf("[结构] %s\n", cn);
+                                snprintf(nb, sizeof nb, "（结构匹配）%s", nb3);
+                                sr = sr3;
+                            }
+                        }
+                    }
+                    if (sr == -1 && strstr(nb, "没有匹配")) {
+                        char rw[1024];
+                        if (code_rewrite(a->brain, d, rw, sizeof rw)) {
+                            char nb2[512] = {0};
+                            int sr2 = code_synth(a->brain, rw, nb2, sizeof nb2);
+                            if (sr2 != -1) {
+                                printf("[改写] %s => %s\n", d, rw);
+                                snprintf(nb, sizeof nb, "（改写后命中）%s", nb2);
+                                sr = sr2;
+                            }
+                        }
+                    }
                     printf("[合成] %s\n", nb[0] ? nb : "（没做成）");
                     if (sr == 0) printf("       ⇒ **写出来了，而且测试全绿**（%s）\n", "::code 看痕");
                     else printf("       ⇒ 没过（rc=%d）；产物在 _t/work/ 下，源码不会替你编造\n", sr);

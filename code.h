@@ -1530,6 +1530,95 @@ static inline int code_rewrite(AI *ai, const char *desc, char *out, size_t cap) 
     return changed;
 }
 
+/* §6.837 方案 C 第一步落地：**操作类归一**。把“没匹配上”的描述改写成规范说法：
+ *   识别输入形状（一行整数/一行字符串/两个整数/矩阵）→ 按出现顺序贴规范操作短语 → 再走原管线。
+ * 只在命令层、只在 note 明确“没有匹配”时调用。 */
+static inline int code_struct_canon(AI *ai, const char *desc, char *out, size_t cap) {
+    if (!ai || !desc || !out || cap == 0) return 0;
+    uint8_t rid_w = rel_id_of(ai, "词", 0);
+    uint8_t rid_s = rel_id_of(ai, "规范", 0);
+    uint8_t rid_p = rel_id_of(ai, "带参数", 0);
+    if (rid_w < REL_DYN_BASE || rid_s < REL_DYN_BASE) return 0;
+    uint8_t dw = (uint8_t)(rid_w - REL_DYN_BASE + 1);
+    uint8_t ds = (uint8_t)(rid_s - REL_DYN_BASE + 1);
+    uint8_t dp = (uint8_t)(rid_p - REL_DYN_BASE + 1);
+    /* 输入形状：从原描述里认，认不出就不写（让模板自己挑） */
+    const char *shape = "";
+    if (strstr(desc, "字符串")) shape = "一行字符串";
+    else if (strstr(desc, "矩阵")) shape = "矩阵";
+    else if (strstr(desc, "两个整数")) shape = "两个整数";
+    else if (strstr(desc, "一行") || strstr(desc, "数组")) shape = "一行整数";
+    /* 按出现位置收集“类”（同类只取第一次） */
+    struct { size_t pos; char canon[96]; } hits[16];
+    int nh = 0;
+    for (size_t i = 0; i < ai->pool->count; ++i) {
+        Token *t = ai->pool->tokens[i];
+        if (!t || !t->name || strncmp(t->name, "操作类:", strlen("操作类:")) != 0) continue;
+        const char *canon = NULL;
+        int need_param = 0;
+        for (size_t j = 0; j < t->count; ++j) {
+            const AssocEntry *e = &token_assocs_ro(t)[j];
+            if (!e->main) continue;
+            if (e->dyn == ds && e->main->name) canon = e->main->name;
+            else if (e->dyn == dp) need_param = 1;
+        }
+        if (!canon) continue;
+        size_t best = (size_t)-1;
+        for (size_t j = 0; j < t->count; ++j) {
+            const AssocEntry *e = &token_assocs_ro(t)[j];
+            if (!e->main || e->dyn != dw || !e->main->name) continue;
+            const char *hit = strstr(desc, e->main->name);
+            if (hit && (size_t)(hit - desc) < best) best = (size_t)(hit - desc);
+        }
+        if (best == (size_t)-1) continue;
+        int dup = 0;
+        for (int q = 0; q < nh; ++q) if (strstr(hits[q].canon, canon)) dup = 1;
+        if (dup) continue;
+        if (nh >= 16) break;
+        hits[nh].pos = best;
+        snprintf(hits[nh].canon, sizeof hits[nh].canon, "%s", canon);
+        /* 带参数的类：从原描述里找紧跟在词后面的中文数字，替换 <P> */
+        if (need_param) {
+            char tmp[96];
+            const char *ph = strstr(hits[nh].canon, "<P>");
+            if (ph) {
+                int pv = -1;
+                for (size_t j = 0; j < t->count && pv < 0; ++j) {
+                    const AssocEntry *e = &token_assocs_ro(t)[j];
+                    if (!e->main || e->dyn != dw || !e->main->name) continue;
+                    const char *hit = strstr(desc, e->main->name);
+                    if (!hit) continue;
+                    pv = code_cn_num(hit + strlen(e->main->name));
+                    if (pv < 0) pv = code_cn_num_before(desc, (size_t)(hit - desc));
+                }
+                char num[16];
+                if (pv > 0) snprintf(num, sizeof num, "%d", pv);
+                else snprintf(num, sizeof num, "2");
+                snprintf(tmp, sizeof tmp, "%.*s%s%s", (int)(ph - hits[nh].canon), hits[nh].canon, num, ph + 3);
+                snprintf(hits[nh].canon, sizeof hits[nh].canon, "%s", tmp);
+            }
+        }
+        nh++;
+    }
+    if (nh == 0) return 0;
+    /* 按出现位置排序 */
+    for (int i = 1; i < nh; ++i) {
+        for (int j = i; j > 0 && hits[j].pos < hits[j - 1].pos; --j) {
+            size_t tp = hits[j].pos; hits[j].pos = hits[j - 1].pos; hits[j - 1].pos = tp;
+            char tc[96];
+            memcpy(tc, hits[j].canon, sizeof tc);
+            memcpy(hits[j].canon, hits[j - 1].canon, sizeof tc);
+            memcpy(hits[j - 1].canon, tc, sizeof tc);
+        }
+    }
+    size_t w = 0;
+    w += (size_t)snprintf(out + w, cap - w, "写一个程序：读入%s（标准输入），", shape[0] ? shape : "输入");
+    for (int i = 0; i < nh && w < cap; ++i)
+        w += (size_t)snprintf(out + w, cap - w, "%s，", hits[i].canon);
+    if (w < cap) snprintf(out + w, cap - w, "输出结果。");
+    return nh;
+}
+
 static inline int code_synth(AI *ai, const char *desc, char *note, size_t cap) {
     if (note && cap) note[0] = 0;
     if (!ai || !ai->pool || !desc || !desc[0]) return -2;
