@@ -1457,7 +1457,12 @@ static inline int code_chain(AI *ai, const char *desc, int min_ops, int need_par
     /* 只在“最后一个算子打印**数组**、且描述确实要数组”时跳过追加输出：
      * 更宽的规则会改变 blind11/13 的行为（实测 capbench 掉）。 */
     int stmt_prints = 0;
-    if (stmts[n - 1] && strstr(stmts[n - 1], "printf(") && strstr(stmts[n - 1], " ? 10 : 32")) {
+    int any_arr_print = 0;
+    for (int _q = 0; _q < n; ++_q)
+        if (stmts[_q] && strstr(stmts[_q], "printf(") &&
+            (strstr(stmts[_q], " ? 10 : 32") || strstr(stmts[_q], "i ? \" %ld\"") ||
+             strstr(stmts[_q], "%ld%c"))) { any_arr_print = 1; break; }
+    if (any_arr_print) {
         static const char *want_arr[] = {"排序后输出", "倒序输出", "每行", "逐行", "输出这些",
                                          "去重后输出", "从小到大排序", "从大到小排序", NULL};
         for (int q = 0; want_arr[q]; ++q)
