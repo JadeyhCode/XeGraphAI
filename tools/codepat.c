@@ -34,6 +34,14 @@ int main(void) {
 
     ck(code_kw_find("输出所有元素的乘积", "乘积", &ml) != NULL, "没有 { 时走普通子串");
 
+    /* §6.827 中文数字：十X / X十 / X十Y */
+    ck(code_cn_num("七进制") == 7, "七 = 7");
+    ck(code_cn_num("十") == 10, "十 = 10");
+    ck(code_cn_num("十六") == 16, "十六 = 16");
+    ck(code_cn_num("二十") == 20, "二十 = 20");
+    ck(code_cn_num("二十三") == 23, "二十三 = 23");
+    ck(code_cn_num_before("转十六进制", 9) == 16, "关键词前取十六 = 16");
+
     printf(fails ? "FAILED %d\n" : "ALL OK\n", fails);
     return fails ? 1 : 0;
 }

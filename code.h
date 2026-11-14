@@ -736,13 +736,49 @@ static inline const char *code_kw_find(const char *desc, const char *kw, size_t 
     return best;
 }
 
-static inline int code_cn_num(const char *p) {
+/* §6.827 中文数字：支持 一..九、十、十X、X十、X十Y（"十六"=16、"二十"=20、"二十三"=23）。
+ * 第二个参数回传“吃掉了几个字节”，供“关键词前面取参数”按字节对齐用。 */
+static inline int code_cn_num_len(const char *p, size_t *used) {
     static const struct { const char *w; int v; } T[] = {
         {"十", 10}, {"一", 1}, {"二", 2}, {"三", 3}, {"四", 4},
         {"五", 5}, {"六", 6}, {"七", 7}, {"八", 8}, {"九", 9}, {NULL, 0}
     };
-    for (int i = 0; T[i].w; ++i)
-        if (!strncmp(p, T[i].w, strlen(T[i].w))) return T[i].v;
+    if (!p || !*p) { if (used) *used = 0; return -1; }
+    for (int i = 0; T[i].w; ++i) {
+        size_t l = strlen(T[i].w);
+        if (strncmp(p, T[i].w, l) != 0) continue;
+        int v = T[i].v; size_t n = l;
+        if (v == 10) {                       /* 十X */
+            for (int j = 1; T[j].w; ++j) {
+                size_t l2 = strlen(T[j].w);
+                if (strncmp(p + n, T[j].w, l2) == 0) { v = 10 + T[j].v; n += l2; break; }
+            }
+        } else if (strncmp(p + n, "十", 3) == 0) {   /* X十 / X十Y */
+            size_t n2 = n + 3; int v2 = v * 10;
+            for (int j = 1; T[j].w; ++j) {
+                size_t l2 = strlen(T[j].w);
+                if (strncmp(p + n2, T[j].w, l2) == 0) { v2 += T[j].v; n2 += l2; break; }
+            }
+            v = v2; n = n2;
+        }
+        if (used) *used = n;
+        return v;
+    }
+    if (used) *used = 0;
+    return -1;
+}
+
+static inline int code_cn_num(const char *p) { size_t u = 0; return code_cn_num_len(p, &u); }
+
+/* 关键词**前面**的中文数字：从 pos 往前试 1/2/3 个字，要求解析长度正好对齐到 pos */
+static inline int code_cn_num_before(const char *desc, size_t pos) {
+    /* 从**最长**往前试："十六进制"要取 16 不是 6 */
+    for (size_t back = 9; back >= 3; back -= 3) {
+        if (pos < back) continue;
+        size_t used = 0;
+        int v = code_cn_num_len(desc + pos - back, &used);
+        if (v > 0 && used == back) return v;
+    }
     return -1;
 }
 /* §6.813 **覆盖率门槛（不硬答）**：描述里被选中的知识只覆盖了一小部分 ⇒ 宁可拒绝。
@@ -1121,7 +1157,7 @@ static inline int code_chain(AI *ai, const char *desc, int min_ops, int need_par
                     }
                     /* §6.812 中文数字：关键词**正前面**的“七/八/十”也算参数值（"七进制"）。 */
                     if (got < has_param && got == 0 && best_pos >= 3) {
-                        int cv = code_cn_num(desc + best_pos - 3);
+                        int cv = code_cn_num_before(desc, best_pos);
                         if (cv > 0) {
                             snprintf(pbufs[n][0], sizeof pbufs[0][0], "%d", cv);
                             got++;
