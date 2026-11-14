@@ -217,7 +217,21 @@ def main():
             print("    PROBE_IO\t\t")
     if args.commit and made:
         out = os.path.join(ROOT, "code/knowledge/generalized.triples")
-        open(out, "w", encoding="utf-8").write("\n".join(all_tri))
+        # **合并**：已有的概念不覆盖（只追加新的）
+        old_lines = []
+        old_names = set()
+        if os.path.exists(out):
+            for ln in open(out, encoding="utf-8"):
+                old_lines.append(ln.rstrip("\n"))
+                if "\t" in ln:
+                    old_names.add(ln.split("\t")[0])
+        add_lines = []
+        for tri in all_tri:
+            name = tri.split("\t")[0]
+            if name in old_names:
+                continue
+            add_lines.extend(tri.rstrip("\n").split("\n"))
+        open(out, "w", encoding="utf-8").write("\n".join(old_lines + add_lines) + "\n")
         print(f"\n已写 {out}（重跑 sh code/build_code_model.sh 生效）")
     return 0 if made else 1
 
