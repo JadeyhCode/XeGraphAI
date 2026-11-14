@@ -1,0 +1,24 @@
+组          通过 拒绝 答错
+hidden          328      0      0
+blind11          12      0      0
+blind12           8      0      0
+blind13           8      0      0
+blind14           7      0      1
+blind15           8      0      0
+blind16           8      0      0
+blind17           8      0      0
+blind18           6      0      2
+blind19           7      1      0
+blind20           8      0      0
+blind21           3      2      3
+blind22           8      0      0
+blind23           8      0      0
+blind24           8      0      0
+blind25           8      0      0
+
+== 与基线比 ==
+  [FAIL] blind14 通过 7 < 基线 8
+  [FAIL] blind14 答错 1 > 基线 0
+  [FAIL] blind18 通过 6 < 基线 8
+  [FAIL] blind18 答错 2 > 基线 0
+FAIL capbench（有组回归）

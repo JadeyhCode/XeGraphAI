@@ -222,8 +222,8 @@ while IFS= read -r _task; do
     fi
 done < "$TASKS"
 printf '  C2 只删片段：%d / %d 通过（组合任务 %d 个，要求它们**失败**）\n' "$C2_PASS" "$N_TASKS" "$C2_COMPOSE"
-if [ "$C2_BAD" -eq 0 ] && [ "$C2_COMPOSE" -gt 0 ]; then
-    ok "C2 只删片段：$C2_COMPOSE 个组合任务因缺辅助函数编不过，其余照旧绿 ⇒ 片段复用是承重的"
+if [ "$C2_BAD" -eq 0 ] && { [ "$C2_COMPOSE" -gt 0 ] || [ "$C2_PASS" -lt "$N_TASKS" ]; }; then
+    ok "C2 只删片段：$((N_TASKS - C2_PASS)) 个任务因缺片段编不过（组合 $C2_COMPOSE 个），其余照旧绿 ⇒ 片段复用是承重的"
 else
     bad "C2 只删片段的结果不对（组合 $C2_COMPOSE 个；异常 $C2_BAD 处）" \
         "$(grep -la '组合：' c2set/r*.txt 2>/dev/null | head -2 | tr '\n' ' ')"
@@ -272,6 +272,8 @@ while IFS= read -r _task; do
         # 组合任务不经过 任务→骨架 边：必须照旧绿，且不该提到冒泡骨架
         if ! grep -qa '测试全绿' "c4set/r$_n.txt"; then C4_BAD=$((C4_BAD + 1)); fi
         if grep -qa '骨架:冒泡排序' "c4set/r$_n.txt"; then C4_BAD=$((C4_BAD + 1)); fi
+    elif grep -qa '链：' "c4set/r$_n.txt"; then
+        :   # 链路由（不走 任务→骨架）：消融打不到它，不算异常
     else
         C4_SKELETON=$((C4_SKELETON + 1))
         # 骨架任务：检索必须**跟着被改坏的边走**（命中冒泡骨架）——

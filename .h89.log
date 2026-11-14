@@ -1,0 +1,418 @@
+== battery ==
+  [PASS] 1到N求和
+  [PASS] 华氏转摄氏
+  [PASS] 闰年
+  [PASS] 完全平方数
+  [PASS] 素数
+  [PASS] 字符串倒序
+  [PASS] 斐波那契
+  [PASS] 最值平均
+  => 8 / 8
+== heldout ==
+  [PASS] 平方和
+  [PASS] 元音个数
+  [PASS] 摄氏转华氏
+  [PASS] 素数判断
+  [PASS] 阶乘
+  [PASS] 幂
+  [PASS] 各位数字和
+  [PASS] 三数最大
+  => 8 / 8
+== heldout2 ==
+  [PASS] 整数位数
+  [PASS] 反转整数
+  [PASS] 偶数判断
+  [PASS] 三数乘积
+  [PASS] 回文整数
+  [PASS] 大写字母个数
+  [PASS] 数组和
+  [PASS] 二进制转十进制
+  => 8 / 8
+== heldout3 ==
+  [PASS] 奇数判断
+  [PASS] 整数平方
+  [PASS] 三个数的和
+  [PASS] 求绝对值
+  [PASS] 小写字母个数
+  [PASS] 数组最大值
+  [PASS] 立方和
+  [PASS] 字符串长度
+  => 8 / 8
+== heldout4 ==
+  [PASS] 两数之和
+  [PASS] 三数平均
+  [PASS] 负数判断
+  [PASS] 数组最小值
+  [NO_MATCH] 空格个数
+         描述: 写一个程序：读入一行字符串（stdin），统计其中空格的个数并输出。
+         得到: '没有生成 .c/.out（多半是图上没有匹配的任务）'
+         期望: '1'
+         合成: 你 > [合成] 配方：0 个片段 + 模板 模板:标准输入字符串 + 主体（配方 配方:空格个数）→ synth_空格个数.c：编过但**测试不过**（rc=127；断言 0 ok / 0 FAIL）：
+  [NO_MATCH] 转大写
+         描述: 写一个程序：读入一行字符串（stdin），把它转成大写后输出。
+         得到: '没有生成 .c/.out（多半是图上没有匹配的任务）'
+         期望: 'ABC'
+         合成: 你 > [合成] 链：1 个运算（转大写）+ 模板 模板:标准输入字符串 → synth_转大写.c：编过、**测试全绿**（synth_转大写.c.out rc=0；断言 1 ok / 0 FAIL）
+  [PASS] 偶数和
+  [PASS] 单词个数
+  => 6 / 8
+== heldout5 ==
+  [PASS] 两数相加
+  [PASS] 三数均值
+  [PASS] 小于零
+  [PASS] 数组最小
+  [PASS] 空白个数
+  [PASS] 变成大写
+  [PASS] 偶数之和
+  [PASS] 词的个数
+  => 8 / 8
+== heldout6 ==
+  [PASS] 阶乘走标准输入
+  [PASS] 平方走标准输入
+  [PASS] 三数最大走标准输入
+  [PASS] 绝对值走标准输入
+  [PASS] 素数判断走标准输入
+  [PASS] 字符串长度走命令行
+  [PASS] 元音个数走命令行
+  [PASS] 大写字母走命令行
+  => 8 / 8
+== heldout7 ==
+  [PASS] 平方加一
+  [PASS] 平方减一
+  [PASS] 绝对值加一
+  [PASS] 加一平方
+  [PASS] 反转加一
+  [PASS] 乘二减一
+  [PASS] 平方乘二
+  [PASS] 平方加一走标准输入
+  => 8 / 8
+== heldout8 ==
+  [PASS] 两数和乘二
+  [PASS] 两数差加一
+  [PASS] 两数积减一
+  [PASS] 两数和平方
+  [PASS] 三数和乘二
+  [PASS] 两数和走标准输入
+  [PASS] 两数差绝对值
+  [PASS] 两数积加一
+  => 8 / 8
+== heldout9 ==
+  [PASS] 数组最大加一
+  [PASS] 数组最小加一
+  [PASS] 数组最大减一
+  [PASS] 数组最小乘二
+  [PASS] 数组和乘二
+  [PASS] 数组平方和加一
+  [PASS] 数组最大绝对值
+  [PASS] 数组和减一
+  => 8 / 8
+== heldout10 ==
+  [PASS] 长度加一
+  [PASS] 长度乘二
+  [PASS] 单词个数加一
+  [PASS] 空格个数乘二
+  [PASS] 元音个数加一
+  [PASS] 大写个数加一
+  [PASS] 小写个数乘二
+  [PASS] 元音个数走命令行
+  => 8 / 8
+== heldout11 ==
+  [PASS] 转大写再翻转
+  [PASS] 翻转再转大写
+  [PASS] 转大写再长度
+  [PASS] 转小写再长度
+  [PASS] 翻转再长度
+  [PASS] 大写翻转长度
+  [PASS] 转小写走命令行
+  [PASS] 翻转再转小写
+  => 8 / 8
+== heldout12 ==
+  [PASS] 较大加一
+  [PASS] 较小乘二
+  [PASS] 较大绝对值
+  [PASS] 较小绝对值
+  [PASS] 较大走标准输入
+  [PASS] 较大平方减一
+  [PASS] 较大是否大于零
+  [PASS] 较小绝对值大于二
+  => 8 / 8
+== heldout13 ==
+  [PASS] 每个数加一再求和
+  [PASS] 每个数平方再求和
+  [PASS] 每个数乘二再求最大
+  [PASS] 每个数平方再求最小
+  [PASS] 每个数加一再求最大
+  [PASS] 每个数乘二再求和
+  [PASS] 每个数平方求和减一
+  [PASS] 每个数加一再求最小
+  => 8 / 8
+== heldout14 ==
+  [PASS] 平方逐行输出
+  [PASS] 加一逐行输出
+  [PASS] 乘二逐行输出
+  [PASS] 减一逐行输出
+  [PASS] 平方加一逐行
+  [PASS] 加一乘二逐行
+  [PASS] 平方再求最大
+  [PASS] 减一再求最大
+  => 8 / 8
+== heldout15 ==
+  [PASS] N首行求最大
+  [PASS] N首行求和
+  [PASS] N首行平方求最大
+  [PASS] N首行加一逐行
+  [PASS] N首行求最小
+  [PASS] N首行乘二求和
+  [PASS] N首行平方和
+  [PASS] N首行减一求最小
+  => 8 / 8
+== heldout16 ==
+  [PASS] 最大最小
+  [PASS] N首行最大最小
+  [PASS] 平方后最大最小
+  [PASS] 加一后最大最小
+  [PASS] 乘二后最大最小
+  [PASS] 和与积
+  [PASS] 差与积
+  [PASS] 和与积走标准输入
+  => 8 / 8
+== heldout17 ==
+  [PASS] 矩阵求和
+  [PASS] 矩阵最大
+  [PASS] 矩阵和乘二
+  [PASS] 矩阵最大加一
+  [PASS] 每行和逐行
+  [PASS] 每行和乘二逐行
+  [PASS] 每行和求最大
+  [PASS] 每行和求和
+  => 8 / 8
+== heldout18 ==
+  [PASS] 最大公约数加一
+  [PASS] 最小公倍数
+  [PASS] 最大公约数乘二
+  [PASS] 最小公倍数加一
+  [PASS] 是不是素数再加一
+  [PASS] 是不是素数走标准输入
+  [PASS] 最小公倍数走标准输入
+  [PASS] gcd和lcm
+  => 8 / 8
+== heldout19 ==
+  [PASS] 文件行数
+  [PASS] 文件单词数
+  [PASS] 文件字符数
+  [PASS] 文件行数乘二
+  [PASS] 文件单词数加一
+  [PASS] 文件行数和单词数
+  [PASS] 文件单词数乘二
+  [PASS] 文件行数减一
+  => 8 / 8
+== heldout20 ==
+  [PASS] 递归阶乘加一
+  [PASS] 递归斐波那契乘二
+  [PASS] 递归求和减一
+  [PASS] 递归求和走标准输入
+  [PASS] 数组翻转逐行
+  [PASS] 数组翻转求最大
+  [PASS] 数组翻转求和
+  [PASS] 数组翻转加一逐行
+  => 8 / 8
+== heldout21 ==
+  [PASS] 数组排序求最大
+  [PASS] 数组排序逐行
+  [PASS] 数组排序求和
+  [PASS] 数组排序求最小
+  [PASS] 数组排序加一逐行
+  [PASS] 数组排序乘二逐行
+  [PASS] 数组排序减一求和
+  [PASS] 数组排序最大减一
+  => 8 / 8
+== heldout22 ==
+  [PASS] 曼哈顿距离
+  [PASS] 曼哈顿距离乘二
+  [PASS] 距离平方
+  [PASS] 距离平方加一
+  [PASS] 距离平方减一
+  [PASS] 中点
+  [PASS] 曼哈顿距离加一
+  [PASS] 距离平方乘二
+  => 8 / 8
+== heldout23 ==
+  [PASS] 矩阵加一输出
+  [PASS] 矩阵平方输出
+  [PASS] 矩阵乘二输出
+  [PASS] 矩阵转置输出
+  [PASS] 矩阵转置求和
+  [PASS] 矩阵转置求最大
+  [PASS] 矩阵加一平方输出
+  [PASS] 矩阵转置加一输出
+  => 8 / 8
+== heldout24 ==
+  [PASS] 乘以三减一
+  [PASS] 乘以减一
+  [PASS] 加上乘二
+  [PASS] 减去加一
+  [PASS] 除以加一
+  [PASS] 乘以再平方
+  [PASS] 乘四加一走标准输入
+  [PASS] 加一百再减一
+  => 8 / 8
+== heldout25 ==
+  [PASS] 统计大于5
+  [PASS] 统计大于0
+  [PASS] 统计大于10再乘二
+  [PASS] 统计小于3
+  [PASS] 求和大于5
+  [PASS] 求和小于5
+  [PASS] 加一后统计大于5
+  [PASS] 求和大于0
+  => 8 / 8
+== heldout26 ==
+  [PASS] 数组平均
+  [PASS] 数组平均不整
+  [PASS] 数组平均负数
+  [PASS] N首行平均
+  [PASS] 平方后平均
+  [PASS] 加一后平均
+  [PASS] 矩阵平均
+  [PASS] 矩阵平均2x3
+  => 8 / 8
+== heldout27 ==
+  [PASS] 区间统计3到9
+  [PASS] 区间统计0到0
+  [PASS] 区间统计2到5乘二
+  [PASS] 区间求和3到9
+  [PASS] 区间求和0到10
+  [PASS] 加一后区间统计3到9
+  [PASS] 区间求和2到4
+  [PASS] 区间求和5到15减一
+  => 8 / 8
+== heldout28 ==
+  [PASS] 平方逗号输出
+  [PASS] 加一逗号输出
+  [PASS] 乘二逗号输出
+  [PASS] 翻转逗号输出
+  [PASS] 排序逗号输出
+  [PASS] 平方加一逗号输出
+  [PASS] 减一逗号输出
+  [PASS] 排序加一逗号输出
+  => 8 / 8
+== heldout29 ==
+  [PASS] 空格换逗号
+  [PASS] 空格换逗号再转大写
+  [PASS] 去空格
+  [PASS] 去空格再求长度
+  [PASS] 空格换逗号再翻转
+  [PASS] 空格换逗号走命令行
+  [PASS] 去空格再转大写
+  [PASS] 空格换逗号再求长度
+  => 8 / 8
+== heldout30 ==
+  [PASS] 从大到小输出
+  [PASS] 从大到小求最大
+  [PASS] 从大到小求最小
+  [PASS] 从大到小求和
+  [PASS] 从大到小逗号输出
+  [PASS] 从大到小加一逐行
+  [PASS] 从大到小平方
+  [PASS] N首行从大到小
+  => 8 / 8
+== heldout31 ==
+  [PASS] 删掉数字
+  [PASS] 删掉字母
+  [PASS] 只留数字
+  [PASS] 删数字走命令行
+  [PASS] 删掉数字再转大写
+  [PASS] 删掉字母再求长度
+  [PASS] 只留数字再求长度
+  [PASS] 删掉数字再翻转
+  => 8 / 8
+== heldout32 ==
+  [PASS] 数组去重
+  [PASS] 去重再求和
+  [PASS] 去重再求最大
+  [PASS] 不同值个数
+  [PASS] 去重再排序
+  [PASS] 去重再翻转
+  [PASS] 不同值个数乘二
+  [PASS] 去重再逐行
+  => 8 / 8
+== heldout33 ==
+  [PASS] 每列和逐行
+  [PASS] 每列和求和
+  [PASS] 每列和求最大
+  [PASS] 每列和乘二逐行
+  [PASS] 每列和加一
+  [PASS] 每列和降序
+  [PASS] 每列和求最小
+  [PASS] 每列和翻转
+  => 8 / 8
+== heldout34 ==
+  [PASS] 区间元素和
+  [PASS] 区间元素和乘二
+  [PASS] 区间元素最大
+  [PASS] 区间元素最小
+  [PASS] 区间元素和加一
+  [PASS] 区间元素最大减一
+  [PASS] 区间元素最小乘二
+  [PASS] 区间元素和再减一
+  => 8 / 8
+== heldout35 ==
+  [PASS] 每列最大逐行
+  [PASS] 每列最大求和
+  [PASS] 每列最大求最大
+  [PASS] 每列最大乘二逐行
+  [PASS] 数组众数
+  [PASS] 众数乘二
+  [PASS] 众数加一
+  [PASS] 每列最大翻转
+  => 8 / 8
+== heldout36 ==
+  [PASS] argv数组最大
+  [PASS] argv数组求和
+  [PASS] argv数组降序
+  [PASS] argv数组去重
+  [PASS] argv数组第1个
+  [PASS] argv数组加一逐行
+  [PASS] argv数组平均
+  [PASS] argv数组众数
+  => 8 / 8
+== heldout37 ==
+  [PASS] 大于5的个数
+  [PASS] 大于5的个数乘二
+  [PASS] 小于3的个数
+  [PASS] 等于2的个数
+  [PASS] 大于5的数的和
+  [PASS] 小于3的数的和
+  [PASS] 大于2的个数加一
+  [PASS] 等于1的个数乘二
+  => 8 / 8
+== heldout38 ==
+  [PASS] 区间整除和
+  [PASS] 区间整除和乘二
+  [PASS] 和与积
+  [PASS] 和与积含负数
+  [PASS] 去极值平均
+  [PASS] 去极值平均乘二
+  [PASS] 首字母大写
+  [PASS] 首字母大写再逆序
+  => 8 / 8
+== heldout39 ==
+  [PASS] 2的10次方
+  [PASS] 3的5次方
+  [PASS] 7的3次方
+  [PASS] 5的4次方
+  [PASS] 7倍
+  [PASS] 12倍
+  [PASS] 除以7余数
+  [PASS] 除以9余数
+  => 8 / 8
+== heldout40 ==
+  [PASS] 多文件2
+  [PASS] 多文件3
+  [PASS] 多文件4
+  [PASS] 多文件5
+  [PASS] 多文件6
+  [PASS] 多文件7
+  [PASS] 多文件8
+  [PASS] 多文件9
+  => 8 / 8
