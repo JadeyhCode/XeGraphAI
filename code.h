@@ -1600,6 +1600,58 @@ static inline int code_struct_canon(AI *ai, const char *desc, char *out, size_t 
         }
         nh++;
     }
+    if (nh == 0) {
+        /* 兜底：图里没有 操作类 关系时（例如预置模型早于该知识），用一张内置小表。
+         * 表很小、只放“语义确定”的说法；宁可接不住，也不猜。 */
+        static const struct { const char *word; const char *canon; } T[] = {
+            {"最高", "所有元素中最大的数"},
+            {"最低", "所有元素中最小的数"},
+            {"排一排", "从小到大排序后输出"},
+            {"整理", "从小到大排序后输出"},
+            {"数目", "一共有多少个数"},
+            {"几个", "一共有多少个数"},
+            {"翻个个", "数组翻转"},
+            {"倒过来", "数组翻转"},
+            {"加起来", "所有元素之和"},
+            {"总计", "所有元素之和"},
+            {"大写化", "转成大写"},
+            {"小写化", "转成小写"},
+            {NULL, NULL}
+        };
+        for (int i = 0; T[i].word; ++i) {
+            if (!strstr(desc, T[i].word)) continue;
+            if (nh >= 16) break;
+            hits[nh].pos = (size_t)(strstr(desc, T[i].word) - desc);
+            snprintf(hits[nh].canon, sizeof hits[nh].canon, "%s", T[i].canon);
+            nh++;
+        }
+    }
+    if (nh == 0) {
+        /* 兜底：图里没有 操作类 关系时（例如预置模型早于该知识），用一张内置小表。
+         * 表很小、只放“语义确定”的说法；宁可接不住，也不猜。 */
+        static const struct { const char *word; const char *canon; } T[] = {
+            {"最高", "所有元素中最大的数"},
+            {"最低", "所有元素中最小的数"},
+            {"排一排", "从小到大排序后输出"},
+            {"整理", "从小到大排序后输出"},
+            {"数目", "一共有多少个数"},
+            {"几个", "一共有多少个数"},
+            {"翻个个", "数组翻转"},
+            {"倒过来", "数组翻转"},
+            {"加起来", "所有元素之和"},
+            {"总计", "所有元素之和"},
+            {"大写化", "转成大写"},
+            {"小写化", "转成小写"},
+            {NULL, NULL}
+        };
+        for (int i = 0; T[i].word; ++i) {
+            if (!strstr(desc, T[i].word)) continue;
+            if (nh >= 16) break;
+            hits[nh].pos = (size_t)(strstr(desc, T[i].word) - desc);
+            snprintf(hits[nh].canon, sizeof hits[nh].canon, "%s", T[i].canon);
+            nh++;
+        }
+    }
     if (nh == 0) return 0;
     /* 按出现位置排序 */
     for (int i = 1; i < nh; ++i) {
