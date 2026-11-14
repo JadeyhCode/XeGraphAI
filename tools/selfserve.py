@@ -75,6 +75,10 @@ def infer_family(desc):
         return ("even_sum", {})
     if "偶数" in d:
         return ("count_even", {})
+    if "平方根" in d:
+        return ("sqrt_sum", {})
+    if "次小" in d or "第二小" in d:
+        return ("second_small", {})
     if "平方和" in d or "平方的和" in d:
         return ("sum_sq", {})
     if "最大" in d:
@@ -120,6 +124,12 @@ def auto_examples(req):
     if fam == "even_sum":
         vs = [[1, 2, 4], [3, 5], [-2, 3]]
         return [(f"{' '.join(str(x) for x in v)}\n", str(sum(x for x in v if x % 2 == 0))) for v in vs]
+    if fam == "sqrt_sum":
+        vs = [[9, 16], [4, 9, 16], [1]]
+        return [(f"{' '.join(str(x) for x in v)}\n", str(sum(int(x ** 0.5) for x in v))) for v in vs]
+    if fam == "second_small":
+        vs = [[5, 1, 3], [1, 2, 3], [7, 2]]
+        return [(f"{' '.join(str(x) for x in v)}\n", str(sorted(set(v))[1] if len(set(v)) > 1 else v[0])) for v in vs]
     if fam == "sum_sq":
         vs = [[1, 2, 3], [4], [-2, 1]]
         return [(f"{' '.join(str(x) for x in v)}\n", str(sum(x * x for x in v))) for v in vs]
@@ -189,7 +199,8 @@ def run_case(exe, req, case):
     """按需求类型跑一个用例：argv / 数组 stdin / 字符串 stdin"""
     try:
         if kind_of(req) == "argv":
-            p = subprocess.run([exe, str(case)], stdout=subprocess.PIPE,
+            args = case if isinstance(case, list) else [str(case)]
+            p = subprocess.run([exe] + args, stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT, timeout=10)
         else:
             p = subprocess.run([exe], input=str(case).encode(), stdout=subprocess.PIPE,
@@ -225,7 +236,19 @@ def prop_check(name, case, out, code):
 
 def verify(exe, req, rng):
     """示例 + 性质 + 稳定：返回 (ok, 说明)"""
-    ex = req["examples"] or auto_examples(req)
+    ex = list(req["examples"])
+    if len(ex) < 2:
+        fam, _ = (req.get("family"), {})
+        if not fam:
+            fam, _ = infer_family(req["desc"])
+        if fam:
+            for c in auto_examples(dict(req, family=fam)):
+                if c not in ex:
+                    ex.append(c)
+                if len(ex) >= 2:
+                    break
+    if not ex:
+        ex = auto_examples(req)
     if not ex:
         return False, "没有示例也没有可用 family（不猜）"
     for case, want in ex:
@@ -254,21 +277,27 @@ def _ret_is_str(func_src):
     return 'char' in head and '*' in head
 
 def wrap(func_src, fname, req):
-    """把候选函数包成完整程序：argv / 数组 stdin / 字符串 stdin 三种形态。"""
+    """把候选函数包成完整程序：argv / argv2 / 数组 / 字符串 / 数组打印 五种形态。"""
     fmt = '"%s\\n"' if _ret_is_str(func_src) else '"%ld\\n"'
     k = kind_of(req)
-    if k == 'arr':
-        call, decl = f'{fname}(v, n)', 'long v[64]; int n = 0; while (n < 64 && scanf("%ld", &v[n]) == 1) n++;'
-    elif k == 'str':
-        call, decl = f'{fname}(s)', 'char s[256] = ""; if (fgets(s, sizeof s, stdin)) {}'
+    rd_arr = 'long v[64]; int n = 0; while (n < 64 && scanf("%ld", &v[n]) == 1) n++;'
+    if k == "argv2":
+        call, decl = f"{fname}(a, b)", "long a = argc > 1 ? atol(argv[1]) : 6; long b = argc > 2 ? atol(argv[2]) : 3;"
+    elif k == "arr_print":
+        call, decl = f"{fname}(v, n)", rd_arr
+    elif k == "arr":
+        call, decl = f"{fname}(v, n)", rd_arr
+    elif k == "str":
+        call, decl = f"{fname}(s)", 'char s[256] = ""; if (fgets(s, sizeof s, stdin)) {}'
     else:
-        call, decl = f'{fname}(n)', 'long n = argc > 1 ? atol(argv[1]) : 10;'
-    return ("#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n"
+        call, decl = f"{fname}(n)", "long n = argc > 1 ? atol(argv[1]) : 10;"
+    head = ("#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n"
             + func_src.rstrip() + "\n"
             + "int main(int argc, char **argv) {\n"
-            + "    " + decl + "\n"
-            + "    printf(" + fmt + ", " + call + ");\n"
-            + "    return 0;\n}\n")
+            + "    " + decl + "\n")
+    if k == "arr_print":
+        return head + "    " + call + ";\n    return 0;\n}\n"
+    return head + "    printf(" + fmt + ", " + call + ");\n    return 0;\n}\n"
 
 def try_sources(req):
     """③④ 取源 + 抽取：先产品联网（失败就跳过），再本地语料"""
@@ -288,7 +317,7 @@ def try_sources(req):
     paths = sorted(glob.glob(os.path.join(CORPUS, "*.c"))) + sorted(glob.glob(os.path.join(CORPUS_REPO, "*.c")))
     for path in paths:
         text = open(path, encoding="utf-8", errors="replace").read()
-        for m in re.finditer(r"(static\s+)?(?:long|const\s+char\s*\*|char\s*\*)\s*(\w+)\s*\(\s*(?:long\s+\w+|const\s+long\s*\*\s*\w+\s*,\s*int\s+\w+|const\s+char\s*\*\s*\w+)\s*\)\s*\{", text):
+        for m in re.finditer(r"(static\s+)?(?:long|const\s+char\s*\*|char\s*\*)\s*(\w+)\s*\(\s*(?:long\s+\w+|const\s+long\s*\*\s*\w+\s*,\s*int\s+\w+|const\s+char\s*\*\s*\w+|long\s+\w+\s*,\s*long\s+\w+)\s*\)\s*\{", text):
             start = m.start()
             depth = 0; i = text.find("{", start)
             j = i
@@ -376,12 +405,38 @@ def ingest(model, req, prog_src, tag):
                        cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=300)
     return r.returncode == 0, tri
 
+def load_blind_reqs(n):
+    import importlib.util
+    path = os.path.join(ROOT, f"tools/code_blind{n}.py")
+    spec = importlib.util.spec_from_file_location(f"tb{n}", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    reqs = []
+    for sp in getattr(mod, f"BLIND{n}"):
+        want = sp["want"]
+        if " " in want.strip():
+            print(f"  SKIP {sp['name']}（多值输出，包装器暂不支持）")
+            continue
+        if sp["kind"] == "argv":
+            kind = "argv2" if "两个整数" in sp["desc"] else "argv"
+        elif "字符串" in sp["desc"]:
+            kind = "str"
+        else:
+            kind = "arr"
+        data = sp["data"] if sp["kind"] == "argv" else (sp["data"][0] if sp["data"] else "")
+        reqs.append(dict(name=sp["name"], desc=sp["desc"], key=sp["name"],
+                         kind=kind, examples=[(data, want)],
+                         props=["yesno"] if want in ("yes", "no") else ["range"]))
+    return reqs
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--commit", action="store_true")
     ap.add_argument("--model", default=os.path.join(ROOT, "code/code_model.bin"))
     ap.add_argument("--sentinels", action="store_true",
                     help="每次入库前跑哨兵（blind19/20/21），掉分就回滚这次入库")
+    ap.add_argument("--from-blind", type=int, default=0, metavar="N",
+                    help="训练 blindN 的题（期望输出当示例）；多值输出自动跳过")
     ap.add_argument("--gate", action="store_true",
                     help="训练后跑能力门；FAIL 就回滚")
 
@@ -390,6 +445,10 @@ def main():
     import random
     rng = random.Random(20261113)
     src_model = args.model if os.path.isabs(args.model) else os.path.join(ROOT, args.model)
+    reqs = REQS
+    if args.from_blind:
+        reqs = load_blind_reqs(args.from_blind)
+        print(f"== 训练集换成 blind{args.from_blind}：{len(reqs)} 条 ==")
     if not os.path.exists(src_model):
         print(f"FAIL: 缺模型 {src_model}"); return 2
     model = os.path.join(WORK, "m.bin")
@@ -406,7 +465,7 @@ def main():
         print(f"   {len(BASE_SENTINELS)} 条")
     accepted = []
     print("== ① 图内推（先看它自己会不会） ==")
-    for req in REQS:
+    for req in reqs:
         path, msg = synth(model, req["desc"])
         ok = False
         if path:
@@ -420,7 +479,7 @@ def main():
             note = [l for l in msg.split("\n") if "合成" in l]
             print(f"  MISS {req['name']}（断点：{(note[-1][:60] if note else '没匹配')}）")
     print("== ② 取源 → ④ 验证 → ⑥ 扩图 ==")
-    for req in REQS:
+    for req in reqs:
         # 已经会了就不再动
         path, _ = synth(model, req["desc"])
         if path:
@@ -514,7 +573,7 @@ def main():
             shutil.copyfile(src_model, model)
             print("   能力门 FAIL ⇒ 已回滚到训练前的模型")
 
-    total = len(REQS)
+    total = len(reqs)
     print(f"\n== 汇总 ==\n  训练前 {before}/{total}；训练后 {after}/{total}；采纳入库 {ingested} 条")
     return 0 if after >= int(total * 0.75) else 1
 
