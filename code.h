@@ -1478,7 +1478,8 @@ static inline int code_chain(AI *ai, const char *desc, int min_ops, int need_par
                 return -1;
             }
         static const char *want_arr[] = {"排序后输出", "倒序输出", "每行", "逐行", "输出这些",
-                                         "去重后输出", "从小到大排序", "从大到小排序", NULL};
+                                         "去重后输出", "从小到大排序", "从大到小排序",
+                                         "序列", NULL};
         for (int q = 0; want_arr[q]; ++q)
             if (strstr(desc, want_arr[q])) { stmt_prints = 1; break; }
     }
