@@ -48,7 +48,15 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#define ACTION_WORK_DIR      "_t/work"     /* 子进程 cwd + 写文件根（唯一一处） */
+#define ACTION_WORK_DIR      "_t/work"     /* 默认值；运行期用 action_workdir() 取（唯一一处） */
+
+/* §6.823 工作目录运行期可变：AIP_WORKDIR 覆盖默认值。
+ * 为什么：自服务训练里的“影响面回归”要和训练主循环同时跑，两边共用一个 _t/work 会互相删产物
+ * （2026-11-13 实测：训练前读数从 5/14 变成 0/14）⇒ 内部复跑用独立目录。 */
+static inline const char *action_workdir(void) {
+    const char *w = getenv("AIP_WORKDIR");
+    return (w && w[0]) ? w : ACTION_WORK_DIR;
+}
 #define ACTION_OUT_CAP       4096          /* 最近一次输出留多少字节 */
 #define ACTION_PATH_CAP      256
 #define ACTION_ARG_MAX       32
@@ -160,8 +168,8 @@ static inline int action_mkdir_p(const char *path) {
 }
 static inline int action_ensure_workdir(void) {
     struct stat st;
-    if (stat(ACTION_WORK_DIR, &st) == 0) return S_ISDIR(st.st_mode) ? 0 : -1;
-    return action_mkdir_p(ACTION_WORK_DIR);
+    if (stat(action_workdir(), &st) == 0) return S_ISDIR(st.st_mode) ? 0 : -1;
+    return action_mkdir_p(action_workdir());
 }
 
 /* 把一行拆成 argv（**不用 shell**：只在空白处切，不做引号/转义/通配）。
@@ -202,7 +210,7 @@ static inline int action_check(const char *const *argv, int argc, char *why, siz
     }
     for (int i = 1; i < argc; ++i) {
         if (argv[i][0] == '/') {
-            snprintf(why, cap, "不许绝对路径：%s（子进程 cwd 已经是 %s）", argv[i], ACTION_WORK_DIR);
+            snprintf(why, cap, "不许绝对路径：%s（子进程 cwd 已经是 %s）", argv[i], action_workdir());
             return -1;
         }
         if (strstr(argv[i], "..")) {
@@ -239,7 +247,7 @@ static inline int action_scan_includes(const char *const *argv, int argc, char *
         size_t len = strlen(a);
         if (len < 2 || (strcmp(a + len - 2, ".c") != 0 && strcmp(a + len - 2, ".h") != 0)) continue;
         char path[ACTION_PATH_CAP];
-        snprintf(path, sizeof path, "%s/%s", ACTION_WORK_DIR, a);
+        snprintf(path, sizeof path, "%s/%s", action_workdir(), a);
         FILE *f = fopen(path, "r");
         if (!f) continue;                        /* 不存在的文件交给 gcc 自己报错 */
         char line[512];
@@ -333,8 +341,8 @@ static inline int action_refuse(const char *what, const char *why) {
  *
  * 规则（写死，别放宽）：
  *   · `rel` 必须是**相对路径**、不含 `..`、**以 `.out` 结尾**（我们自己的产物命名）；
- *   · 文件必须真的在 ACTION_WORK_DIR 下、且可执行；
- *   · cwd = ACTION_WORK_DIR，stdin = /dev/null，超时 5 s，输出进审计账（和别的命令一样）；
+ *   · 文件必须真的在 action_workdir() 下、且可执行；
+ *   · cwd = action_workdir()，stdin = /dev/null，超时 5 s，输出进审计账（和别的命令一样）；
  *   · **不加进白名单**：`::act run a.out` 照样被拒 —— 这个入口只由 `::code test` 调。
  */
 static inline int action_run_product(AI *ai, const char *rel) {
@@ -348,7 +356,7 @@ static inline int action_run_product(AI *ai, const char *rel) {
     if (rel[0] == '/' || strstr(rel, "..")) return action_refuse(rel, "只许工作区里的相对路径");
     if (action_ensure_workdir() != 0) return action_refuse(rel, "工作目录建不出来");
     char full[ACTION_PATH_CAP + 64];
-    snprintf(full, sizeof full, "%s/%s", ACTION_WORK_DIR, rel);
+    snprintf(full, sizeof full, "%s/%s", action_workdir(), rel);
     struct stat st;
     if (stat(full, &st) != 0 || !S_ISREG(st.st_mode) || !(st.st_mode & S_IXUSR))
         return action_refuse(rel, "产物不在（或不带可执行位）—— 先 ::code build / ::code try");
@@ -362,7 +370,7 @@ static inline int action_run_product(AI *ai, const char *rel) {
         if (dn >= 0) { (void)dup2(dn, 0); close(dn); }
         (void)dup2(pfd[1], 1); (void)dup2(pfd[1], 2);
         close(pfd[0]); close(pfd[1]);
-        if (chdir(ACTION_WORK_DIR) != 0) _exit(126);
+        if (chdir(action_workdir()) != 0) _exit(126);
         /* ⚠ chdir 之后要用**相对工作区的路径**（`full` 是相对原始 cwd 的 ⇒ execl 必失败 rc=127） */
         execl(rel, rel, (char *)NULL);
         _exit(127);
@@ -437,7 +445,7 @@ static inline int action_run(AI *ai, const char *line) {
         (void)dup2(pfd[1], 1);
         (void)dup2(pfd[1], 2);
         close(pfd[0]); close(pfd[1]);
-        if (chdir(ACTION_WORK_DIR) != 0) _exit(126);
+        if (chdir(action_workdir()) != 0) _exit(126);
         execvp(argv[0], argv);
         _exit(127);                      /* 127 = 命令没起来（execvp 失败） */
     }
@@ -514,7 +522,7 @@ static inline int action_write_file(AI *ai, const char *rel, const char *text) {
     if (action_ensure_workdir() != 0) return action_refuse(rel, "工作目录建不出来（" ACTION_WORK_DIR "）");
 
     char path[ACTION_PATH_CAP + 48];
-    snprintf(path, sizeof path, "%s/%s", ACTION_WORK_DIR, rel);
+    snprintf(path, sizeof path, "%s/%s", action_workdir(), rel);
     /* 父目录：逐个建（不走 shell） */
     {
         char dir[sizeof path];
@@ -571,7 +579,7 @@ static inline void action_print(const AI *ai) {
            (ai && ai->act_on) ? "开" : "关（默认）",
            (ai && ai->act_on) ? "改行为前先 A/B" : "没打开就绝不动外部世界；::act on / AIP_ACT=1 打开");
     printf("  边界：**不用 shell**（fork/exec + argv；`;|&` 只是普通参数）｜子进程 cwd = %s"
-           "｜不许绝对路径 / 不许 `..` / 不许 `@响应文件` / 开关参数不许夹带路径｜stdin = /dev/null｜不联网\n", ACTION_WORK_DIR);
+           "｜不许绝对路径 / 不许 `..` / 不许 `@响应文件` / 开关参数不许夹带路径｜stdin = /dev/null｜不联网\n", action_workdir());
     printf("  白名单（首词精确匹配；::act timeout <ms> 覆盖超时，0 = 用表里的）：\n");
     for (size_t i = 0; i < ACTION_ALLOW_N; ++i) {
         long t = (g_act_timeout_ms > 0) ? g_act_timeout_ms : ACTION_ALLOW[i].timeout_ms;

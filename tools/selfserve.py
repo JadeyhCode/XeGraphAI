@@ -161,15 +161,20 @@ def clean(s):
     while out and not out[-1]: out.pop()
     return "\n".join(out)
 
-def synth(model, desc):
-    for p in glob.glob(os.path.join(ROOT, "_t/work/synth_*")):
+def synth(model, desc, workdir=None):
+    """合成；workdir 给定时用独立工作目录（AIP_WORKDIR），避免和主循环抢 _t/work。"""
+    import glob as g
+    wd = workdir or "_t/work"
+    for p in g.glob(os.path.join(ROOT, wd, "synth_*")):
         os.remove(p)
+    env = dict(os.environ)
+    env["AIP_WORKDIR"] = wd
     inp = f"::act on\n::code synth {desc}\n::quit\n"
     r = subprocess.run([os.path.join(ROOT, "build_aip"), "--model", model],
-                       input=inp.encode(), cwd=ROOT, stdout=subprocess.PIPE,
+                       input=inp.encode(), cwd=ROOT, env=env, stdout=subprocess.PIPE,
                        stderr=subprocess.STDOUT, timeout=180)
     out = r.stdout.decode("utf-8", "replace")
-    files = sorted(glob.glob(os.path.join(ROOT, "_t/work/synth_*.c")), key=os.path.getmtime)
+    files = sorted(g.glob(os.path.join(ROOT, wd, "synth_*.c")), key=os.path.getmtime)
     return (files[-1] if files else None), out
 
 def compile_prog(src_text, tag):
@@ -296,6 +301,65 @@ def try_sources(req):
             cands.append((os.path.basename(path), text[start:j + 1], m.group(2)))
     return cands
 
+
+VDIR = "_t/serve/vwork"    # 内部复跑专用（AIP_WORKDIR）
+
+def spec_runner(spec, model):
+    """按 spec 的类型跑一次“合成→编译→跑→比对”，返回是否 PASS（独立工作目录）。"""
+    path, _msg = synth(model, spec["desc"], workdir=VDIR)
+    if not path:
+        return False
+    exe = compile_prog(open(path, encoding="utf-8").read(), "v_" + str(abs(hash(spec["name"])) % 99999))
+    if not exe:
+        return False
+    try:
+        if spec["kind"] == "argv":
+            p = subprocess.run([exe] + spec["data"], stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT, timeout=10)
+        elif spec["kind"] == "file":
+            fpath = os.path.join(WORK, "v_" + str(abs(hash(spec["name"])) % 99999) + ".txt")
+            open(fpath, "w", encoding="utf-8").write(spec["data"][0])
+            p = subprocess.run([exe, fpath], stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT, timeout=10)
+        else:
+            p = subprocess.run([exe], input=spec["data"][0].encode(), stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT, timeout=10)
+        got = clean(p.stdout.decode("utf-8", "replace"))
+    except subprocess.TimeoutExpired:
+        return False
+    return re.fullmatch(spec["want"], got) is not None
+
+
+def affected_specs(key):
+    import importlib.util
+    specs = []
+    def load(path, names):
+        spec = importlib.util.spec_from_file_location("vm_" + os.path.basename(path)[:-3], path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        for nm in names:
+            specs.extend(getattr(mod, nm, []))
+    load(os.path.join(ROOT, "tools/code_hidden.py"),
+         ["HELDOUT" + ("" if i == 1 else str(i)) for i in range(1, 41)])
+    for g in (19, 20, 21):
+        load(os.path.join(ROOT, f"tools/code_blind{g}.py"), [f"BLIND{g}"])
+    return [sp for sp in specs if key and key in sp.get("desc", "")]
+
+
+SAMPLE_GROUPS = ("HELDOUT", "HELDOUT5", "HELDOUT18", "HELDOUT30", "HELDOUT33")
+
+def sample_specs():
+    import importlib.util
+    path = os.path.join(ROOT, "tools/code_hidden.py")
+    spec = importlib.util.spec_from_file_location("vm_sample", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    out = []
+    for nm in SAMPLE_GROUPS:
+        for sp in getattr(mod, nm, [])[:3]:
+            out.append(sp)
+    return out
+
 def ingest(model, req, prog_src, tag):
     """⑥ 扩图：任务/骨架/代码 三元组（代码用续行）"""
     name = "SERVE_" + tag
@@ -331,6 +395,9 @@ def main():
     model = os.path.join(WORK, "m.bin")
     shutil.copyfile(src_model, model)
 
+    os.makedirs(os.path.join(ROOT, VDIR), exist_ok=True)
+    SAMPLE = sample_specs()
+    SAMPLE_BASE = {sp["name"] for sp in SAMPLE if spec_runner(sp, model)}
     before = after = ingested = 0
     BASE_SENTINELS = set()
     if args.sentinels:
@@ -372,9 +439,17 @@ def main():
                 print(f"  REJECT {req['name']} ← {src_name}:{fname}（{why}）")
                 continue
             backup = os.path.join(WORK, "m_pre_ingest.bin")
-            if args.sentinels:
-                shutil.copyfile(model, backup)
+            shutil.copyfile(model, backup)
+            os.makedirs(os.path.join(ROOT, VDIR), exist_ok=True)
+            AFF = affected_specs(req.get("key", ""))
+            base_ok = {sp["name"] for sp in AFF if spec_runner(sp, model)}
             good, tri = ingest(model, req, prog, req["name"])
+            if good and AFF:
+                lost = base_ok - {sp["name"] for sp in AFF if spec_runner(sp, model)}
+                if lost:
+                    shutil.copyfile(backup, model)
+                    print(f"  ROLLBACK {req['name']}：影响面掉分 {sorted(lost)[:3]} ⇒ 这次不入库")
+                    continue
             if good:
                 if args.sentinels:
                     lost = BASE_SENTINELS - sentinel_passset(model)
@@ -418,6 +493,13 @@ def main():
             for tri in accepted:
                 f.write(tri)
         print(f"\n已追加到 {out}（重跑 sh code/build_code_model.sh 生效）")
+
+    lost_sample = SAMPLE_BASE - {sp["name"] for sp in SAMPLE if spec_runner(sp, model)}
+    if lost_sample:
+        shutil.copyfile(src_model, model)
+        print(f"\n== 样本门：掉分 {sorted(lost_sample)[:5]} ⇒ 已整体回滚 ==")
+    else:
+        print(f"\n== 样本门：{len(SAMPLE_BASE)}/{len(SAMPLE)} 仍通过（训练未破坏旧能力）==")
 
     if args.gate:
         print("\n== 能力门：训练后的模型跑隐藏组 + blind11..21 ==")

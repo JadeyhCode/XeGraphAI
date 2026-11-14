@@ -282,7 +282,7 @@ static inline int code_build_dir(AI *ai, const char *dir, char *note, size_t cap
     char cmd[ACTION_CMD_CAP];
     snprintf(cmd, sizeof cmd, "gcc -std=c11 -Wall -o %s/a.out", dir);
     char full[ACTION_PATH_CAP + 64];
-    snprintf(full, sizeof full, "%s/%s", ACTION_WORK_DIR, dir);
+    snprintf(full, sizeof full, "%s/%s", action_workdir(), dir);
     DIR *dp = opendir(full);
     if (!dp) {
         if (note && cap) snprintf(note, cap, "打不开目录 %s", full);
@@ -1756,7 +1756,7 @@ static inline int code_round(AI *ai, const char *rel) {
         return -2;
     }
     char full[ACTION_PATH_CAP + 48];
-    snprintf(full, sizeof full, "%s/%s", ACTION_WORK_DIR, rel);
+    snprintf(full, sizeof full, "%s/%s", action_workdir(), rel);
     FILE *f = fopen(full, "rb");
     if (!f) { code_cat(cr->note, sizeof cr->note, "读不开 ", full, "（先 ::act write 或让它写出来）"); return -2; }
     char *src = (char *)malloc(CODE_SRC_CAP);
@@ -1926,7 +1926,7 @@ static inline int code_round(AI *ai, const char *rel) {
 static inline void code_print(void) {
     CodeRun *cr = &g_code;
     if (cr->attempts == 0 && !cr->note[0]) {
-        printf("[写代码闭环] 还没走过。用法：::code try <相对路径>（文件在 " ACTION_WORK_DIR "/ 里）\n");
+        printf("[写代码闭环] 还没走过。用法：::code try <相对路径>（文件在工作区里，默认 _t/work）\n");
         printf("  修法表（一行一条）：\n");
         for (size_t i = 0; i < CODE_FIX_N; ++i)
             printf("    %-22s %-10s %s\n", CODE_FIXES[i].err, CODE_FIXES[i].fix, CODE_FIXES[i].why);
@@ -1939,7 +1939,7 @@ static inline void code_print(void) {
     if (cr->lex[0])   printf("  词法：%s\n", cr->lex);
     if (cr->note[0])  printf("  改了什么：%s\n", cr->note);
     if (cr->attempts >= 2 || cr->first_rc == 0)
-        printf("  产物：%s/%s%s（在 " ACTION_WORK_DIR "/ 里）\n", ACTION_WORK_DIR, cr->path, CODE_OUT_NAME);
+        printf("  产物：%s/%s%s（在工作区里）\n", action_workdir(), cr->path, CODE_OUT_NAME);
 }
 
 /* 代理循环那条路：`AIP_CODE=<相对路径>` 时**自己**走一遍（默认关；一个进程只走一次） */
