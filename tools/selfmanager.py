@@ -131,6 +131,17 @@ def step_regress(report):
     return ok
 
 
+def step_triage(report, which):
+    """P4：跑失败分类器，报告写 _t/triage/blind<NN>.md（不改进任何东西，只产出动作清单）。"""
+    log(f"  [triage] blind{which} 失败分类")
+    rc, out = run([sys.executable, os.path.join(ROOT, "tools/triage.py"), "--set", str(which)], timeout=3600)
+    report["triage"] = {"set": which, "ok": rc == 0}
+    for line in out.split("\n")[-3:]:
+        if line.strip():
+            log("    " + line.strip())
+    return rc == 0
+
+
 def step_blind(report, nos):
     """盲测失败清单 → 需求 → selfserve → 门禁 → 入库（失败如实记 NOGAIN）。"""
     import re
@@ -194,6 +205,8 @@ def main():
                 steps += [("generalize", None), ("blind", [21, 22]), ("regress", None)]
             elif s.startswith("selfserve"):
                 steps.append(("selfserve", int(s.split(":")[1]) if ":" in s else 21))
+            elif s.startswith("triage"):
+                steps.append(("triage", int(s.split(":")[1]) if ":" in s else 28))
             else:
                 steps.append((s, None))
         report = {"steps": args.steps, "started": time.time(), "results": []}
@@ -209,6 +222,8 @@ def main():
                 ok = step_regress(report)
             elif name == "blind":
                 ok = step_blind(report, arg or [21, 22])
+            elif name == "triage":
+                ok = step_triage(report, arg or 28)
             else:
                 log(f"  未知步骤 {name}")
                 continue

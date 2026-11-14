@@ -13,6 +13,7 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 import code_search as S
+import code_hidden as H
 
 TASKS = S.BLIND26
 
@@ -23,8 +24,8 @@ def synth(desc):
         if f.startswith("synth_"):
             os.remove(os.path.join(ROOT, "_t", "work", f))
     inp = "::act on\n::code synth %s\n::quit\n" % desc
-    r = subprocess.run([os.path.join(ROOT, "build_aip"), "--model",
-                        os.path.join(ROOT, "code", "code_model.bin")],
+    model = os.environ.get("AIP_CODE_MODEL") or os.path.join(ROOT, "code", "code_model.bin")
+    r = subprocess.run([os.path.join(ROOT, "build_aip"), "--model", model],
                        input=inp.encode(), capture_output=True, timeout=180, cwd=ROOT)
     out = (r.stdout + r.stderr).decode("utf-8", "replace")
     # 不靠文件名（中文可能有 Unicode 规范化差异）：直接取工作目录里最新的 .c
@@ -69,7 +70,8 @@ def judge(task, rng, tries=4):
         got = run_prog(path, data)
         if got is None:
             return "refuse", out
-        if got.strip() != S.exp_str(want).strip():
+        # 与隐藏组判官一致：去掉骨架自测打印的 ok/FAIL 行再比
+        if H.clean_out(got).strip() != S.exp_str(want).strip():
             return "wrong", out
         ok_n += 1
     if ok_n == 0:

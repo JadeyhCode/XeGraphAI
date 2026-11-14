@@ -12,7 +12,7 @@
 set -u
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 cd "$ROOT"
-OUT=code/code_model.bin
+OUT=${AIP_CODE_MODEL_OUT-code/code_model.bin}
 [ "${1:-}" = "--rebuild-api" ] && sh tools/headers2triples.sh > /dev/null
 
 [ -s code/knowledge/skeletons.triples ] || { echo "FAIL: 缺 skeletons.triples"; exit 1; }
