@@ -30506,3 +30506,22 @@ relations.txt:281: 人 会 画画
 
 影响：进制族（二/五/八/十六）全部正确；隐藏组不变（328/328）；blind22 +1（1/8 → 2/8）。
 
+
+## §6.828 自管理编排器（selfmanager）：日常循环交给它，人看报告（2026-11-14）
+
+为什么：日常劳动（补课、归纳、回归、日报）已经有工具了，但**怎么串、什么时候回滚**一直靠人。
+
+做法：`tools/selfmanager.py`
+
+| 机制 | 说明 |
+|---|---|
+| 串行锁 | `_t/manager.lock` 记 pid；活着就 REFUSE（并发长跑 = 假读数，324/328 事件）|
+| 快照 | 每步前备份 `code_model.bin`、`generalized.triples`、`compose.triples` |
+| 门禁 | `--gate`：每步后 capbench，FAIL 就恢复快照 |
+| 日报 | `_t/manager/daily-<日期>.md` + `report.jsonl` |
+
+步骤：`generalize` / `blind:N` / `selfserve:N` / `regress` / `all`。
+
+边界（照实说）：它只执行既定流程，**不选目标、不设计新机制、不判断测量是否可信**；
+这两件事仍由人做——它负责把设计好的流程跑得不走样。
+
