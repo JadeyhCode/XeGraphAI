@@ -1545,6 +1545,7 @@ int main(int argc, char **argv) {\
 运算:交替和	关键词	交替和
 运算:交替和	模板	模板:标准输入整数数组
 运算:交替和	语句	{ long t2 = 0; for (int i = 0; i < n; i++) t2 += (i % 2 == 0) ? v[i] : -v[i]; x = t2; }
+运算:极差	排除	之后输出极差
 运算:极差	关键词	最大值与最小值之差
 运算:极差	关键词	极差
 运算:极差	模板	模板:标准输入整数数组
@@ -1780,6 +1781,7 @@ int main(int argc, char **argv) {\
 运算:罗马转整数	关键词	罗马数字
 运算:罗马转整数	语句	{ long t = 0; int L2 = 0; while (s[L2] && s[L2] != 10 && s[L2] != 13) L2++; for (int i = 0; i < L2; i++) { int cv = 0, nx = 0; switch (s[i]) { case 73: cv = 1; break; case 86: cv = 5; break; case 88: cv = 10; break; case 76: cv = 50; break; case 67: cv = 100; break; case 68: cv = 500; break; case 77: cv = 1000; break; default: cv = 0; } if (i + 1 < L2) { switch (s[i + 1]) { case 86: nx = 5; break; case 88: nx = 10; break; case 76: nx = 50; break; case 67: nx = 100; break; case 68: nx = 500; break; case 77: nx = 1000; break; default: nx = 0; } } t += (cv < nx) ? -cv : cv; } x = t; }
 运算:罗马转整数	模板	模板:标准输入字符串
+运算:方差整数	排除	之后输出方差
 运算:方差整数	关键词	{方差|方差的整数}
 运算:方差整数	语句	{ long S = 0; for (int i = 0; i < n; i++) S += v[i]; long mu = n > 0 ? S / n : 0; long q = 0; for (int i = 0; i < n; i++) { long d = v[i] - mu; q += d * d; } x = n > 0 ? q / n : 0; }
 运算:方差整数	模板	模板:标准输入整数数组

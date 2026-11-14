@@ -18,6 +18,16 @@ OUT = os.path.join(ROOT, "code", "knowledge", "searched.triples")
 
 # 每题一个**足够窄**的说法（别用“长度/个数”，会劫持别的题）
 LEARN_KW = {
+    # blind27
+    "去重": "去掉重复",
+    "去重后长度": "去重后输出一共",
+    "去重后第二小": "去重后输出第二小",
+    "前缀和最大": "前缀和里的最大",
+    "前缀和最小": "前缀和里的最小",
+    "乘二后极差": "之后输出极差",
+    "加五后方差": "之后输出方差",
+    "反转后前缀和最大": "反转后再输出前缀和",
+    # blind26
     "极差": "极差",
     "平方和": "平方和",
     "偶数个数": "偶数的个数",
@@ -39,7 +49,10 @@ def triples_for(task, chain):
     lines = ["任务:%s\t关键词\t%s" % (name, kw)]
     # 通用让位：命令行参数 / 1 到 N / 第一行给 N / 每行 / 矩阵 这些形态交给原任务，
     # 别让搜索结果劫持（实测“平方和”会抢隐藏组的 “1 到 N 的平方和”）。
-    for ex in ("命令行参数", "1 到", "第一行", "每行", "矩阵"):
+    exs = ["命令行参数", "1 到", "第一行", "每行"]
+    # 形状隔离：数组题别抢字符串题（实测“去掉重复的字符”被数组去重抢走）
+    exs += ["字符串", "字符"] if task["shape"] == "arr" else ["数组", "整数"]
+    for ex in exs:
         lines.append("任务:%s\t排除\t%s" % (name, ex))
     lines += ["任务:%s\t骨架\t骨架:%s" % (name, name),
              "骨架:%s\t语言\tC11" % name,
@@ -54,7 +67,8 @@ def main(argv):
     dry = "--dry" in argv
     rng = random.Random(20261114)
     rows, out = 0, []
-    for t in S.BLIND26:
+    TASKS = list(S.BLIND26) + list(S.BLIND27)   # 两套一起学，整份重写
+    for t in TASKS:
         chain, why = S.search(t["desc"], rng, t["gold"], t["shape"])
         if not chain:
             print("  [SKIP] %s（%s）" % (t["name"], why))

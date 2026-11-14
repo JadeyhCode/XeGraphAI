@@ -48,6 +48,14 @@ OPS = {
     "转小写": dict(i="str", o="str", p=0,
         stmt="for (int i = 0; s[i]; i++) if (s[i] >= 'A' && s[i] <= 'Z') s[i] = (char)(s[i] + 32);"),
     "字符长度": dict(i="str", o="int", p=0, stmt="x = (long)strlen(s);"),
+    "第k小": dict(i="arr", o="int", p=1,
+        stmt="qsort(v, (size_t)n, sizeof v[0], cmp_long); x = v[P - 1];"),
+    "去重": dict(i="arr", o="arr", p=0,
+        stmt="{ qsort(v, (size_t)n, sizeof v[0], cmp_long); int m = 0; for (int i = 0; i < n; i++) if (i == 0 || v[i] != v[i - 1]) v[m++] = v[i]; n = m; }"),
+    "前缀和": dict(i="arr", o="arr", p=0,
+        stmt="for (int i = 1; i < n; i++) v[i] += v[i - 1];"),
+    "方差整数": dict(i="arr", o="int", p=0,
+        stmt="x = 0; { long s = 0; for (int i = 0; i < n; i++) s += v[i]; long mu = s / n; for (int i = 0; i < n; i++) { long d = v[i] - mu; x += d * d; } x /= n; }"),
     "字符串反转": dict(i="str", o="str", p=0,
         stmt="for (int i = 0, j = (int)strlen(s) - 1; i < j; i++, j--) { char t = s[i]; s[i] = s[j]; s[j] = t; }"),
 }
@@ -89,6 +97,10 @@ KW = {
     "转大写": ["转成大写", "变成大写"],
     "转小写": ["转成小写", "变成小写"],
     "字符长度": ["字符数", "长度"],
+    "第k小": ["第"],
+    "去重": ["去重", "不重复", "去掉重复"],
+    "前缀和": ["前缀和", "前面的和累加"],
+    "方差整数": ["方差"],
     "字符串反转": ["反转", "倒过来"],
 }
 
@@ -117,19 +129,35 @@ def parse_desc(desc):
 
 
 def candidates(seq):
+    """保序子序列，长度 1–3，类型必须接得上；按长度优先（MDL：越短越先试）。"""
     out = []
-    for name, k in seq:
-        if OPS[name]["p"] and not k:
+
+    def extend(prefix, start):
+        if prefix:
+            out.append(list(prefix))
+        if len(prefix) >= 3:
+            return
+        for j in range(start, len(seq)):
+            name, k = seq[j]
+            if OPS[name]["p"] and not k:
+                continue
+            if prefix and OPS[prefix[-1][0]]["o"] != OPS[name]["i"]:
+                continue
+            prefix.append((name, k))
+            extend(prefix, j + 1)
+            prefix.pop()
+
+    extend([], 0)
+    out.sort(key=len)
+    # 去重（同一链只留一份）
+    seen, uniq = set(), []
+    for c in out:
+        key = tuple(c)
+        if key in seen:
             continue
-        out.append([(name, k)])
-    for a, ka in seq:
-        for b, kb in seq:
-            if a == b or OPS[a]["o"] != OPS[b]["i"]:
-                continue
-            if (OPS[a]["p"] and not ka) or (OPS[b]["p"] and not kb):
-                continue
-            out.append([(a, ka), (b, kb)])
-    return out
+        seen.add(key)
+        uniq.append(c)
+    return uniq
 
 
 PRELUDE = r"""
@@ -198,23 +226,33 @@ def exp_str(want):
     return str(want)
 
 
-def verify(chain, shape, rng, gold, tries=6):
+def verify(chain, shape, rng, gold, tries=6, max_attempts=20):
+    """随机输入 + 任务 gold；无定义的输入跳过，但要凑够 tries 个有效样本。"""
     src = gen_program(shape, chain)
     if not src:
         return False, "形状不支持"
-    for _ in range(tries):
+    checked = 0
+    for _ in range(max_attempts):
+        if checked >= tries:
+            break
         if shape == "arr":
-            value = [rng.randint(-9, 9) for _ in range(rng.randint(1, 7))]
+            # 值域小一点，保证**有重复**（否则“去重”类任务会被偶然放行）
+            value = [rng.randint(-4, 4) for _ in range(rng.randint(2, 7))]
             inp = " ".join(str(x) for x in value) + "\n"
         else:
             value = "".join(rng.choice("abcXYZ") for _ in range(rng.randint(1, 6)))
             inp = value + "\n"
+        want = gold(value)
+        if want is None:
+            continue
         got = run_case(src, inp.encode(), "cand")
         if got is None:
             return False, "编译/运行失败"
-        exp = exp_str(gold(value))
-        if got.strip() != exp.strip():
-            return False, "不一致 want=%r got=%r" % (exp, got.strip())
+        if got.strip() != exp_str(want).strip():
+            return False, "不一致 want=%r got=%r" % (exp_str(want), got.strip())
+        checked += 1
+    if checked < tries:
+        return False, "有效样本不足"
     return True, "ok"
 
 
@@ -251,6 +289,43 @@ BLIND26 = [
 ]
 
 
+BLIND27 = [
+    dict(name="去重", shape="arr", desc="读入一行整数（标准输入），去掉重复的数后输出。",
+         gold=lambda a: sorted(set(a))),
+    dict(name="去重后长度", shape="arr", desc="读入一行整数（标准输入），去重后输出一共有多少个数。",
+         gold=lambda a: len(set(a))),
+    dict(name="去重后第二小", shape="arr", desc="读入一行整数（标准输入），去重后输出第二小的数。",
+         gold=lambda a: (sorted(set(a))[1] if len(set(a)) > 1 else None)),
+    dict(name="前缀和最大", shape="arr", desc="读入一行整数（标准输入），输出前缀和里的最大值。",
+         gold=lambda a: max(_pref(a))),
+    dict(name="前缀和最小", shape="arr", desc="读入一行整数（标准输入），输出前缀和里的最小值。",
+         gold=lambda a: min(_pref(a))),
+    dict(name="乘二后极差", shape="arr", desc="读入一行整数（标准输入），每个数乘 2 之后输出极差。",
+         gold=lambda a: max(a) * 2 - min(a) * 2),
+    dict(name="加五后方差", shape="arr", desc="读入一行整数（标准输入），每个数加 5 之后输出方差（取整）。",
+         gold=lambda a: _var([x + 5 for x in a])),
+    dict(name="反转后前缀和最大", shape="arr", desc="读入一行整数（标准输入），反转后再输出前缀和里的最大值。",
+         gold=lambda a: max(_pref(list(reversed(a))))),
+]
+
+
+def _pref(a):
+    out, s = [], 0
+    for x in a:
+        s += x
+        out.append(s)
+    return out
+
+
+def _var(a):
+    mu = int(sum(a) / len(a))
+    return int(sum((x - mu) * (x - mu) for x in a) / len(a))
+
+
+def _set_of(argv):
+    return BLIND27 if "--blind27" in argv else BLIND26
+
+
 def main(argv):
     rng = random.Random(20261114)
     if "--desc" in argv:
@@ -260,16 +335,17 @@ def main(argv):
               else ("SEARCH fail: " + desc + "（%s）" % why))
         return 0 if chain else 1
     got, rows = 0, []
-    for t in BLIND26:
+    TASKS = _set_of(argv)
+    for t in TASKS:
         chain, why = search(t["desc"], rng, t["gold"], t["shape"])
         ok = chain is not None
         got += 1 if ok else 0
         rows.append(dict(name=t["name"], ok=ok, chain=[n for n, _ in chain] if chain else [], why=why))
         print(("  [PASS] " if ok else "  [FAIL] ") + t["name"] +
               (("  ⇒ " + " → ".join(n for n, _ in chain)) if ok else "  （%s）" % why))
-    print("=> 首跑 %d / %d" % (got, len(BLIND26)))
+    print("=> 首跑 %d / %d" % (got, len(TASKS)))
     if "--json" in argv:
-        print(json.dumps(dict(passed=got, total=len(BLIND26), rows=rows), ensure_ascii=False))
+        print(json.dumps(dict(passed=got, total=len(TASKS), rows=rows), ensure_ascii=False))
     return 0 if got else 1
 
 
