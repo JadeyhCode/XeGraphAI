@@ -146,6 +146,12 @@ def main():
                f"{gname}\t模板\t{tpl}\n")
         for use in (ops[members[0][0]].get("用") or []):
             tri += f"{gname}\t用\t{use}\n"
+        # 其余关系（输出/声明行/要求/排除…）照抄第一条：归纳只改“关键词 + 语句里的参数”
+        for rel_name, vals in ops[members[0][0]].items():
+            if rel_name in ("关键词", "语句", "参数", "用", "模板"):
+                continue
+            for v in vals:
+                tri += f"{gname}\t{rel_name}\t{v}\n"
         names = [m[0] for m in members]
         print(f"  归纳：{names} => {gname}（关键词 {pat}）")
         tf = os.path.join(WORK, "gen.triples")
@@ -161,38 +167,47 @@ def main():
         if r.returncode != 0:
             print("    插入失败"); continue
         made += 1
+        # ---- 通用验证 ----
+        # 实例模型（只有实例，没有概念）vs 概念模型：教过的说法必须逐字一致
+        base_model_src = (os.path.join(ROOT, args.model) if args.model and not os.path.isabs(args.model)
+                          else (args.model if args.model else os.path.join(ROOT, "code/code_model.bin")))
+        model_a = os.path.join(WORK, "a.bin")
+        shutil.copyfile(base_model_src, model_a)
+        # 注意：a 里也要有两条实例（调用方已把实例灌进 base_model_src 时就不用再灌）
         rng = random.Random(20261113)
         ok_taught = True
-        for _ in range(6):
-            vals = [rng.randint(-9, 9) for _ in range(rng.randint(3, 6))]
-            stdin = " ".join(str(x) for x in vals) + "\n"
-            uniq = sorted(set(vals))
-            want = {2: str(uniq[1] if len(uniq) >= 2 else uniq[-1]),
-                    3: str(uniq[2] if len(uniq) >= 3 else uniq[-1])}
-            outs = {}
-            for k, cn in ((2, "二"), (3, "三")):
-                p, _m = synth(model, f"写一个程序：读入一行整数（标准输入），输出第{cn}小的数。")
-                if not p:
-                    ok_taught = False; break
-                outs[k] = run_prog(build(p, "t%d" % k), stdin)
-            if not ok_taught or outs != want:
-                ok_taught = False
-                print(f"    教过的 k 不一致：{outs} vs {want}（输入 {vals}）")
+        for m in members:
+            kw = m[1]
+            for _ in range(3):
+                vals = [rng.randint(-9, 9) for _ in range(rng.randint(3, 6))]
+                stdin = " ".join(str(x) for x in vals) + "\n"
+                desc = f"写一个程序：读入一行整数（标准输入），输出{kw}。"
+                pa, _ = synth(model_a, desc)
+                pb, _ = synth(model, desc)
+                if not pa or not pb:
+                    ok_taught = False
+                    print(f"    教过的说法合成失败：{kw}（无概念={'有' if pa else '无'} 有概念={'有' if pb else '无'}）")
+                    break
+                oa = run_prog(build(pa, "a"), stdin)
+                ob = run_prog(build(pb, "b"), stdin)
+                if oa != ob:
+                    ok_taught = False
+                    print(f"    教过的说法不一致：{kw} 无概念={oa!r} 有概念={ob!r}（输入 {vals}）")
+                    break
+            if not ok_taught:
                 break
-        print(f"    教过的 k=2/3 复现：{'OK' if ok_taught else 'FAIL'}")
-        ok5 = 0
-        for _ in range(6):
-            vals = [rng.randint(-9, 9) for _ in range(rng.randint(5, 8))]
-            stdin = " ".join(str(x) for x in vals) + "\n"
-            p, _m = synth(model, "写一个程序：读入一行整数（标准输入），输出第五小的数。")
-            if not p:
-                continue
-            got = run_prog(build(p, "k5"), stdin)
-            uniq = sorted(set(vals))
-            want = str(uniq[4] if len(uniq) >= 5 else uniq[-1])
-            if got == want:
-                ok5 += 1
-        print(f"    迁移（没教过 第五小）：{ok5}/6")
+        print(f"    教过的说法复现：{'OK' if ok_taught else 'FAIL'}")
+        # 迁移：把模式里的数字换成“五”的说法，看能不能合成出来（正确性交给调用方的 oracle）
+        probe = re.sub(r"\{[^}]*\}", "五", pats_out[0])
+        desc = f"写一个程序：读入一行整数（标准输入），输出{probe}。"
+        pp, _ = synth(model, desc)
+        print(f"    PROBE\t{probe}")
+        if pp:
+            stdin = "1 2 3\n"
+            got = run_prog(build(pp, "probe"), stdin)
+            print(f"    PROBE_IO\t{stdin.strip()}\t{got}")
+        else:
+            print("    PROBE_IO\t\t")
     if args.commit and made:
         out = os.path.join(ROOT, "code/knowledge/generalized.triples")
         shutil.copyfile(os.path.join(WORK, "gen.triples"), out)
