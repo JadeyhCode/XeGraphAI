@@ -1463,6 +1463,20 @@ static inline int code_chain(AI *ai, const char *desc, int min_ops, int need_par
             (strstr(stmts[_q], " ? 10 : 32") || strstr(stmts[_q], "i ? \" %ld\"") ||
              strstr(stmts[_q], "%ld%c"))) { any_arr_print = 1; break; }
     if (any_arr_print) {
+        /* §6.853 窄标量闸门：描述明确要**某一个数**（“第二个数/第二大的数/中间的那个数”），
+         * 而链里却在打印整个数组 ⇒ 语义不对，让位给任务/搜索器。
+         * 只认这些明确说法（更宽的“第/最大”会把 capbench 打掉过）。 */
+        static const char *want_scalar[] = {
+            "第二个数", "第三个数", "第一个数", "第四个数", "第五个数",
+            "第二大的数", "第二小的数", "第三大的数", "第三小的数",
+            "中间的那个数", NULL
+        };
+        for (int q = 0; want_scalar[q]; ++q)
+            if (strstr(desc, want_scalar[q])) {
+                if (getenv("AIP_CHAINDBG"))
+                    fprintf(stderr, "[gate] 要标量却打数组（%s）⇒ 让位\n", ops[n - 1]->name);
+                return -1;
+            }
         static const char *want_arr[] = {"排序后输出", "倒序输出", "每行", "逐行", "输出这些",
                                          "去重后输出", "从小到大排序", "从大到小排序", NULL};
         for (int q = 0; want_arr[q]; ++q)
