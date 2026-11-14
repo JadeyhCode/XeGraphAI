@@ -129,6 +129,30 @@ def auto_examples(req):
     return []
 
 
+
+def _sentinels():
+    """哨兵用例：blind19/20/21（公开的盲测集），用来保证“学新不毁旧”。"""
+    import importlib.util
+    cases = []
+    for g in (19, 20, 21):
+        path = os.path.join(ROOT, f"tools/code_blind{g}.py")
+        spec = importlib.util.spec_from_file_location(f"cb{g}", path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        cases += getattr(mod, f"BLIND{g}")
+    return cases
+
+
+def sentinel_passset(model):
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    from code_hidden import judge
+    good = set()
+    for spec in _sentinels():
+        st, _got, _out = judge(spec, model)
+        if st == "PASS":
+            good.add(spec["name"])
+    return good
+
 def kind_of(req):
     return req.get("kind", "argv")
 
@@ -292,6 +316,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--commit", action="store_true")
     ap.add_argument("--model", default=os.path.join(ROOT, "code/code_model.bin"))
+    ap.add_argument("--sentinels", action="store_true",
+                    help="每次入库前跑哨兵（blind19/20/21），掉分就回滚这次入库")
+    ap.add_argument("--gate", action="store_true",
+                    help="训练后跑能力门；FAIL 就回滚")
+
     args = ap.parse_args()
     os.makedirs(CORPUS, exist_ok=True)
     import random
@@ -303,6 +332,11 @@ def main():
     shutil.copyfile(src_model, model)
 
     before = after = ingested = 0
+    BASE_SENTINELS = set()
+    if args.sentinels:
+        print("== 哨兵基线（blind19/20/21 里现在能过的） ==")
+        BASE_SENTINELS = sentinel_passset(model)
+        print(f"   {len(BASE_SENTINELS)} 条")
     accepted = []
     print("== ① 图内推（先看它自己会不会） ==")
     for req in REQS:
@@ -337,8 +371,17 @@ def main():
             if not ok:
                 print(f"  REJECT {req['name']} ← {src_name}:{fname}（{why}）")
                 continue
+            backup = os.path.join(WORK, "m_pre_ingest.bin")
+            if args.sentinels:
+                shutil.copyfile(model, backup)
             good, tri = ingest(model, req, prog, req["name"])
             if good:
+                if args.sentinels:
+                    lost = BASE_SENTINELS - sentinel_passset(model)
+                    if lost:
+                        shutil.copyfile(backup, model)
+                        print(f"  ROLLBACK {req['name']}：入库后哨兵掉分 {sorted(lost)[:3]} ⇒ 这次不入库")
+                        continue
                 ingested += 1; got = True; accepted.append(tri)
                 print(f"  LEARN  {req['name']} ← {src_name}:{fname}（{why}）")
                 break
@@ -375,6 +418,19 @@ def main():
             for tri in accepted:
                 f.write(tri)
         print(f"\n已追加到 {out}（重跑 sh code/build_code_model.sh 生效）")
+
+    if args.gate:
+        print("\n== 能力门：训练后的模型跑隐藏组 + blind11..21 ==")
+        env = dict(os.environ); env["AIP_CAPBENCH"] = "1"; env["AIP_CODE_MODEL"] = model
+        pr = subprocess.run(["sh", os.path.join(ROOT, "tests/capbench.sh")],
+                            cwd=ROOT, env=env, stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT, timeout=3600)
+        out = pr.stdout.decode("utf-8", "replace")
+        for l in [x for x in out.split("\n") if "=>" in x or "FAIL" in x or "PASS capbench" in x][-6:]:
+            print("   " + l.strip())
+        if "PASS capbench" not in out:
+            shutil.copyfile(src_model, model)
+            print("   能力门 FAIL ⇒ 已回滚到训练前的模型")
 
     total = len(REQS)
     print(f"\n== 汇总 ==\n  训练前 {before}/{total}；训练后 {after}/{total}；采纳入库 {ingested} 条")
