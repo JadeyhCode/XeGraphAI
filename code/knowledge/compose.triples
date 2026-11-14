@@ -479,6 +479,7 @@ int main(void) {\
 运算:数组最小	关键词	挑出其中最小的
 运算:数组最小	语句	{ x = v[0]; for (int i = 1; i < n; i++) if (v[i] < x) x = v[i]; }
 运算:数组最小	模板	模板:标准输入整数数组
+运算:数组和	排除	转置
 运算:数组和	排除	最大值与
 运算:数组和	排除	第二大
 运算:数组和	排除	偶数
@@ -838,6 +839,7 @@ int main(int argc, char **argv) {\
 运算:矩阵转置	语句	{ long t[16][16]; for (int i = 0; i < rr; i++) for (int j = 0; j < cc; j++) t[j][i] = m[i][j]; for (int i = 0; i < cc; i++) for (int j = 0; j < rr; j++) m[i][j] = t[i][j]; int tr = rr; rr = cc; cc = tr; }
 运算:矩阵转置	输出	打印:矩阵
 # 矩阵对角线和 / 数组循环左移（数据）
+运算:矩阵对角线和	关键词	转置后主对角线
 运算:矩阵对角线和	关键词	主对角线
 运算:矩阵对角线和	语句	{ x = 0; for (int i = 0; i < rr && i < cc; i++) x += m[i][i]; }
 运算:矩阵对角线和	模板	模板:标准输入矩阵
@@ -1473,6 +1475,7 @@ int main(int argc, char **argv) {\
 运算:括号匹配	模板	模板:标准输入字符串
 运算:括号匹配	语句	{ char st[128]; int top = 0, good = 1; for (int i = 0; s[i]; i++) { char c = s[i]; if (c == 40 || c == 91 || c == 123) { if (top < 127) st[top++] = c; else { good = 0; break; } } else if (c == 41 || c == 93 || c == 125) { if (top == 0) { good = 0; break; } char o2 = st[--top]; if ((c == 41 && o2 != 40) || (c == 93 && o2 != 91) || (c == 125 && o2 != 123)) { good = 0; break; } } } if (top != 0) good = 0; fputs(good ? "yes" : "no", stdout); putchar(10); }
 运算:括号匹配	输出	打印:无
+运算:罗马数字	排除	对应的整数
 运算:罗马数字	关键词	罗马
 运算:罗马数字	关键词	罗马数字
 运算:罗马数字	模板	模板:命令行整数
@@ -1518,6 +1521,7 @@ int main(int argc, char **argv) {\
 运算:负数个数	关键词	负数个数
 运算:负数个数	模板	模板:标准输入整数数组
 运算:负数个数	语句	{ long c = 0; for (int i = 0; i < n; i++) if (v[i] < 0) c++; x = c; }
+运算:数字字符个数	排除	罗马
 运算:数字字符个数	关键词	数字字符
 运算:数字字符个数	模板	模板:标准输入字符串
 运算:数字字符个数	语句	{ long c = 0; for (int i = 0; s[i]; i++) if (s[i] >= 48 && s[i] <= 57) c++; x = c; }
@@ -1754,3 +1758,20 @@ int main(int argc, char **argv) {\
 运算:按位异或	关键词	按位异或
 运算:按位异或	语句	x = A ^ B;
 运算:按位异或	模板	模板:命令行两整数
+
+# 补 blind24 的族外缺口（都是通用、可复用的小算子）
+运算:罗马转整数	关键词	罗马数字
+运算:罗马转整数	语句	{ long t = 0; int L2 = 0; while (s[L2] && s[L2] != 10 && s[L2] != 13) L2++; for (int i = 0; i < L2; i++) { int cv = 0, nx = 0; switch (s[i]) { case 73: cv = 1; break; case 86: cv = 5; break; case 88: cv = 10; break; case 76: cv = 50; break; case 67: cv = 100; break; case 68: cv = 500; break; case 77: cv = 1000; break; default: cv = 0; } if (i + 1 < L2) { switch (s[i + 1]) { case 86: nx = 5; break; case 88: nx = 10; break; case 76: nx = 50; break; case 67: nx = 100; break; case 68: nx = 500; break; case 77: nx = 1000; break; default: nx = 0; } } t += (cv < nx) ? -cv : cv; } x = t; }
+运算:罗马转整数	模板	模板:标准输入字符串
+运算:方差整数	关键词	{方差|方差的整数}
+运算:方差整数	语句	{ long S = 0; for (int i = 0; i < n; i++) S += v[i]; long mu = n > 0 ? S / n : 0; long q = 0; for (int i = 0; i < n; i++) { long d = v[i] - mu; q += d * d; } x = n > 0 ? q / n : 0; }
+运算:方差整数	模板	模板:标准输入整数数组
+运算:最大质因数	关键词	{最大质因数|最大的质因数}
+运算:最大质因数	语句	{ long best = 1; long k = N; for (long p = 2; p * p <= k; p++) { while (k % p == 0) { best = p; k /= p; } } if (k > 1) best = k; x = best; }
+运算:最大质因数	模板	模板:命令行整数
+运算:鸡兔同笼	关键词	{鸡兔同笼|鸡的只数}
+运算:鸡兔同笼	语句	{ long heads = A, feet = B; long c = -1; for (long i = 0; i <= heads; i++) if (i * 2 + (heads - i) * 4 == feet) { c = i; break; } x = c; }
+运算:鸡兔同笼	模板	模板:命令行两整数
+运算:组合旋转子段和	关键词	{旋转后最大子段和|循环右移一位后最大子段和}
+运算:组合旋转子段和	语句	{ if (n > 0) { long t2 = v[n - 1]; for (int i = n - 1; i > 0; i--) v[i] = v[i - 1]; v[0] = t2; } long best = v[0], cur = v[0]; for (int i = 1; i < n; i++) { cur = (cur > 0) ? cur + v[i] : v[i]; if (cur > best) best = cur; } x = best; }
+运算:组合旋转子段和	模板	模板:标准输入整数数组
