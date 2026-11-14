@@ -15,6 +15,26 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WORK = os.path.join(ROOT, "_t", "search")
 
+def _load_duals():
+    """从 code/knowledge/duals.triples 读对偶表（结构反统一的数据形式）。"""
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "code", "knowledge", "duals.triples")
+    pairs = []
+    try:
+        for line in open(path, encoding="utf-8"):
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            parts = line.split("	")
+            if len(parts) == 3 and parts[0] == "对偶":
+                pairs.append((parts[1], parts[2]))
+    except OSError:
+        pass
+    return pairs
+
+
+DUALS = _load_duals()
+
 OPS = {
     "数组最大": dict(i="arr", o="int", p=0,
         stmt="x = v[0]; for (int i = 1; i < n; i++) if (v[i] > x) x = v[i];"),
@@ -50,6 +70,8 @@ OPS = {
     "字符长度": dict(i="str", o="int", p=0, stmt="x = (long)strlen(s);"),
     "第k小": dict(i="arr", o="int", p=1,
         stmt="qsort(v, (size_t)n, sizeof v[0], cmp_long); x = v[P - 1];"),
+    "第k大": dict(i="arr", o="int", p=1, derived=True,
+        stmt="qsort(v, (size_t)n, sizeof v[0], cmp_desc); x = v[P - 1];"),
     "去重": dict(i="arr", o="arr", p=0,
         stmt="{ qsort(v, (size_t)n, sizeof v[0], cmp_long); int m = 0; for (int i = 0; i < n; i++) if (i == 0 || v[i] != v[i - 1]) v[m++] = v[i]; n = m; }"),
     "前缀和": dict(i="arr", o="arr", p=0,
@@ -98,6 +120,7 @@ KW = {
     "转小写": ["转成小写", "变成小写"],
     "字符长度": ["字符数", "长度"],
     "第k小": ["第"],
+    "第k大": ["大"],
     "去重": ["去重", "不重复", "去掉重复"],
     "前缀和": ["前缀和", "前面的和累加"],
     "方差整数": ["方差"],
@@ -124,12 +147,21 @@ def parse_desc(desc):
         m = re.search(r"([0-9]+|[一二三四五六七八九十]+)", desc[pos:pos + 10])
         if m:
             k = cn2int(m.group(1))
+        if k is None:
+            # 数字在关键词**前面**（“第二大的数”：数词在“大”前面）
+            back = desc[max(0, pos - 6):pos]
+            m2 = re.search(r"([0-9]+|[一二三四五六七八九十]+)$", back)
+            if m2:
+                k = cn2int(m2.group(1))
         seq.append((name, k))
     return shape, seq
 
 
-def candidates(seq):
-    """保序子序列，长度 1–3，类型必须接得上；按长度优先（MDL：越短越先试）。"""
+def candidates(seq, stage=1):
+    """保序子序列，长度 1–3，类型必须接得上；按长度优先（MDL）。
+
+    stage=1：只用基础算子；stage=2：允许 derived（对偶替换派生出来的）算子。
+    """
     out = []
 
     def extend(prefix, start):
@@ -140,6 +172,8 @@ def candidates(seq):
         for j in range(start, len(seq)):
             name, k = seq[j]
             if OPS[name]["p"] and not k:
+                continue
+            if stage < 2 and OPS[name].get("derived"):
                 continue
             if prefix and OPS[prefix[-1][0]]["o"] != OPS[name]["i"]:
                 continue
@@ -262,10 +296,19 @@ def search(desc, rng, gold, shape_hint=None):
         shape = shape_hint
     if not seq:
         return None, "没认出算子"
-    for chain in candidates(seq):
+    # 阶段 1：基础算子枚举
+    for chain in candidates(seq, stage=1):
         ok, _why = verify(chain, shape, rng, gold)
         if ok:
-            return chain, "ok"
+            return chain, "ok:S1"
+    # 阶段 2：对偶替换（anti-unification 的“同一骨架、换比较子”）
+    if os.environ.get("AIP_SEARCH_NO_DUAL") == "1":
+        return None, "关掉对偶替换（A/B）"
+    if any(OPS[n].get("derived") for n, _ in seq):
+        for chain in candidates(seq, stage=2):
+            ok, _why = verify(chain, shape, rng, gold)
+            if ok:
+                return chain, "ok:S2"
     return None, "候选都没过验证"
 
 
@@ -323,7 +366,29 @@ def _var(a):
 
 
 def _set_of(argv):
+    if "--blind28" in argv:
+        return BLIND28
     return BLIND27 if "--blind27" in argv else BLIND26
+
+
+BLIND28 = [
+    dict(name="第二大", shape="arr", desc="读入一行整数（标准输入），输出其中第二大的数。",
+         gold=lambda a: sorted(a, reverse=True)[1] if len(a) > 1 else None),
+    dict(name="第三大", shape="arr", desc="读入一行整数（标准输入），输出其中第三大的数。",
+         gold=lambda a: sorted(a, reverse=True)[2] if len(a) > 2 else None),
+    dict(name="去重后第二大", shape="arr", desc="读入一行整数（标准输入），去重后输出第二大的数。",
+         gold=lambda a: sorted(set(a), reverse=True)[1] if len(set(a)) > 1 else None),
+    dict(name="去重后第三小", shape="arr", desc="读入一行整数（标准输入），去重后输出第三小的数。",
+         gold=lambda a: sorted(set(a))[2] if len(set(a)) > 2 else None),
+    dict(name="从大到小排序", shape="arr", desc="读入一行整数（标准输入），从大到小排序后输出。",
+         gold=lambda a: sorted(a, reverse=True)),
+    dict(name="降序后第二个", shape="arr", desc="读入一行整数（标准输入），从大到小排序后输出第二个数。",
+         gold=lambda a: sorted(a, reverse=True)[1] if len(a) > 1 else None),
+    dict(name="反转后第二大", shape="arr", desc="读入一行整数（标准输入），反转后输出第二大的数。",
+         gold=lambda a: sorted(a, reverse=True)[1] if len(a) > 1 else None),
+    dict(name="前缀和第二大", shape="arr", desc="读入一行整数（标准输入），输出前缀和里的第二大的数。",
+         gold=lambda a: sorted(_pref(a), reverse=True)[1] if len(a) > 1 else None),
+]
 
 
 def main(argv):

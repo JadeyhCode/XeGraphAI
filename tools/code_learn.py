@@ -18,6 +18,15 @@ OUT = os.path.join(ROOT, "code", "knowledge", "searched.triples")
 
 # 每题一个**足够窄**的说法（别用“长度/个数”，会劫持别的题）
 LEARN_KW = {
+    # blind28（同骨架换比较子/方向）
+    "第二大": "其中第二大",
+    "第三大": "其中第三大",
+    "去重后第二大": "去重后输出第二大",
+    "去重后第三小": "去重后输出第三小",
+    "从大到小排序": "从大到小排序后输出",
+    "降序后第二个": "排序后输出第二个",
+    "反转后第二大": "反转后输出第二大",
+    "前缀和第二大": "前缀和里的第二大",
     # blind27
     "去重": "去掉重复",
     "去重后长度": "去重后输出一共",
@@ -67,7 +76,7 @@ def main(argv):
     dry = "--dry" in argv
     rng = random.Random(20261114)
     rows, out = 0, []
-    TASKS = list(S.BLIND26) + list(S.BLIND27)   # 两套一起学，整份重写
+    TASKS = list(S.BLIND26) + list(S.BLIND27)   # 两套一起学，整份重写（blind28 只由搜索器解，暂不写回）
     for t in TASKS:
         chain, why = S.search(t["desc"], rng, t["gold"], t["shape"])
         if not chain:
