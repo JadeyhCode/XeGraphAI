@@ -1081,6 +1081,7 @@ int main(int argc, char **argv) {\
 运算:数组降序	语句	{ qsort(v, (size_t)n, sizeof v[0], cmp_desc); }
 运算:数组降序	用	片段:cmp_desc
 运算:数组降序	模板	模板:标准输入整数数组
+运算:第二大	前序无	最大值
 运算:第二大	关键词	第二大的数
 运算:第二大	语句	{ qsort(v, (size_t)n, sizeof v[0], cmp_desc); x = ((long)n >= 2) ? v[1] : 0; }
 运算:第二大	用	片段:cmp_desc

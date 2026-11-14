@@ -949,6 +949,22 @@ static inline int code_chain(AI *ai, const char *desc, int min_ops, int need_par
                 if (unmet) continue;
             }
         }
+        /* §6.826 **前序/后序约束**：某个词出现在命中位置**之前/之后**时让位。
+         * 用来拆“最大值与第二大”这类复合表达（第二大 前面有 最大值 ⇒ 不是它在起作用）。 */
+        {
+            uint8_t rid_pre = rel_id_of(ai, "前序无", 0);
+            if (rid_pre >= REL_DYN_BASE) {
+                uint8_t d_pre = (uint8_t)(rid_pre - REL_DYN_BASE + 1);
+                int yield_now = 0;
+                for (size_t j = 0; j < t->count && !yield_now; ++j) {
+                    const AssocEntry *e = &token_assocs_ro(t)[j];
+                    if (!e->main || e->dyn != d_pre || !e->main->name) continue;
+                    const char *hit = strstr(desc, e->main->name);
+                    if (hit && (size_t)(hit - desc) < best_pos) yield_now = 1;
+                }
+                if (yield_now) continue;
+            }
+        }
         /* §6.722 运算也可以有排除词：描述里出现就说明"不是这个运算"（不硬答） */
         {
             uint8_t rid_ex = rel_id_of(ai, "排除", 0);
