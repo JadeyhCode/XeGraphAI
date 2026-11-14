@@ -1491,6 +1491,45 @@ static inline int code_chain(AI *ai, const char *desc, int min_ops, int need_par
                  n, ops[0]->name + 7, ops[n - 1]->name + 7, tmpl->name ? tmpl->name : "?");
     return code_emit(ai, tmpl, body, fcodes, fnames, nf, outbase, hd, note, cap);
 }
+/* §6.834 方案 C 第一步：**说法归一**（只给命令层用；不进 code_synth 内部，避免递归与误触发）。 */
+static inline int code_rewrite(AI *ai, const char *desc, char *out, size_t cap) {
+    if (!ai || !desc || !out || cap == 0) return 0;
+    uint8_t rid = rel_id_of(ai, "改写", 0);
+    if (rid < REL_DYN_BASE) return 0;
+    uint8_t d = (uint8_t)(rid - REL_DYN_BASE + 1);
+    snprintf(out, cap, "%s", desc);
+    int changed = 0;
+    for (;;) {
+        size_t blen = 0;
+        const char *bfrom = NULL, *bto = NULL;
+        for (size_t i = 0; i < ai->pool->count; ++i) {
+            Token *t = ai->pool->tokens[i];
+            if (!t || !t->name || t->count < 2) continue;
+            const char *to = NULL;
+            for (size_t j = 0; j < t->count; ++j) {
+                const AssocEntry *e = &token_assocs_ro(t)[j];
+                if (e->main && e->dyn == d) { to = e->main->name; break; }
+            }
+            if (!to) continue;
+            if (!strstr(out, t->name)) continue;
+            size_t l = strlen(t->name);
+            if (l > blen) { blen = l; bfrom = t->name; bto = to; }
+        }
+        if (!bfrom) break;
+        const char *pos = strstr(out, bfrom);
+        if (!pos) break;
+        char tmp[1024];
+        size_t pre = (size_t)(pos - out);
+        if (pre >= sizeof tmp) break;
+        memcpy(tmp, out, pre);
+        tmp[pre] = 0;
+        snprintf(tmp + pre, sizeof tmp - pre, "%s%s", bto, pos + blen);
+        snprintf(out, cap, "%s", tmp);
+        changed = 1;
+    }
+    return changed;
+}
+
 static inline int code_synth(AI *ai, const char *desc, char *note, size_t cap) {
     if (note && cap) note[0] = 0;
     if (!ai || !ai->pool || !desc || !desc[0]) return -2;
