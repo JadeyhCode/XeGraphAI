@@ -1,0 +1,107 @@
+训练文档.txt — JainkAI / XeGraphAI 怎么训练（V0.08a，2026-11-14）
+=====================================================================
+
+一句话：这个"模型"不是神经网络，是**一张图 + 一套检索/合成/验证程序**。
+"训练" = 往图里写三元组（边），或用语料生成器造语料再灌进去。没有梯度、没有权重。
+
+---------------------------------------------------------------
+0. 先把它跑起来
+---------------------------------------------------------------
+  gcc -std=c11 -O2 -Wall -Wextra -Wpedantic -Werror -o build_aip main.c -lm
+  ./build_aip --model model.bin
+
+  # 代码知识模型（C 合成器要用的另一张图）
+  sh code/build_code_model.sh        # 产物 code/code_model.bin
+
+---------------------------------------------------------------
+1. 三个训练入口（按规模从下到上）
+---------------------------------------------------------------
+
+① 单条教学 ::teach（交互里，最小颗粒）
+  ::teach 猫 属于 动物            # 教一条关系
+  ::teach 麒麟 属于 神兽          # 关系词不认识 ⇒ 自动登记成动态关系
+  ::teach 猫 不 属于 植物         # 否定
+  规则：主语/关系词/宾语三段；教完立刻可问；同一个事实再说一次会"改口"（后说的算）。
+
+② 批量灌 ::ingest（文件，生产用法）
+  文件格式：一行一条三元组，TAB 分隔，`#` 注释，行尾 `\` 续行：
+    猫<TAB>属于<TAB>动物
+    猫<TAB>会<TAB>叫
+  ::ingest data/my_facts.triples
+  这是**和 ::teach 同一条写入路径**的批处理，不会有第二套语义。
+
+③ 语料生成 → 灌词共现（造"语言感"，不是事实）
+  cc -O2 -o train train.c           && ./train > seed.txt
+  cc -O2 -o traindialog traindialog.c && ./traindialog > dialog.txt
+  cc -O2 -o trainframes trainframes.c && ./trainframes > frames.txt
+  然后按主程序启动时的方式喂进去（见 main.c 的种子装载逻辑），或用 ::ingest 导入。
+  注意：这三份造的是**词序列共现**，不会产生可靠事实；事实必须来自 ::teach/::ingest。
+
+---------------------------------------------------------------
+2. 代码知识（C 合成器）怎么练
+---------------------------------------------------------------
+  全部知识在 code/knowledge/*.triples，各有分工：
+
+    文件                       内容                        谁用
+    skeletons.triples          任务 → 骨架 → 整段 C        任务检索
+    compose.triples            运算/配方/模板/片段/打印     链式合成
+    capi.triples               从 /usr/include 抽的 API    片段生成（大文件，本地生成）
+    c2.triples                 真实函数体（片段）           片段复用（本地生成）
+    generalized.triples        双实例反统一归纳出的概念     第k小/乘k…
+    opclass.triples            操作类词表（词→规范说法）    方案C 结构归一
+    rewrite.triples            说法归一（同义词）          兜底改写
+    prim.triples               20 个算子带类型的基（输入类/输出类/参数槽/操作类）
+
+  改完知识：
+    sh code/build_code_model.sh        # 重建 code/code_model.bin
+    python3 tools/code_hidden.py       # 隐藏组：必须 328/328
+    AIP_CAPBENCH=1 sh tests/capbench.sh   # 能力门（hidden + blind11..25）必须 PASS
+    sh tests/all.sh                    # 整包 119 套
+
+  写作要点（都是踩过的坑）：
+    · 关键词要按"剥完虚词"的文本写：全部/所有/里面 会先被剥掉；
+    · 排除词是**子串**匹配：排除 二进制 会把 十二进制 一起杀掉；
+    · 模式 {a|b|c} 最多 4 个分支：中文数字要按 4 个一组拆成多条关键词；
+    · 同一个词被多个算子抢 ⇒ 用 要求/排除/前序无 让位，别硬加关键词。
+
+---------------------------------------------------------------
+3. 自我训练回路（不需要人逐条写）
+---------------------------------------------------------------
+  ① 需求驱动自学（selfserve）
+     python3 tools/selfserve.py            # 内置 14 条需求（5/14 → 14/14 演示）
+     python3 tools/selfserve.py --from-blind 22   # 把盲测集当需求训练
+     流程：图内推 → 断点分类 → 取源（语料/网络）→ 四层验证（示例/性质/稳定/换说法）
+           → 扩图 → 复测；只改 _t/serve/m.bin 副本，仓库模型不动。
+
+  ② 双实例反统一（generalize）
+     python3 tools/generalize.py            # 扫"只差一个常数"的实例对并归纳
+     python3 tools/generalize.py --commit   # 合并写 code/knowledge/generalized.triples
+     例：教 第二小 + 第三小 ⇒ 归纳 第<P>小 ⇒ 没教过的第五小可用。
+
+  ③ 自管理编排器（selfmanager）
+     python3 tools/selfmanager.py --steps generalize --gate   # 归纳 + 能力门（FAIL 自动回滚）
+     python3 tools/selfmanager.py --steps blind:22 --gate     # 盲测失败清单 → 补课 → 复测
+     python3 tools/selfmanager.py --steps regress             # 清 _t/work、串行跑整包、记 sha
+     报告：_t/manager/report.jsonl + daily-<日期>.md；串行锁 _t/manager.lock。
+
+---------------------------------------------------------------
+4. 怎么判断"学会了"（测量协议）
+---------------------------------------------------------------
+  · 隐藏组（41 组 × 8）：训练/改知识后必须 328/328 —— 这是**回归**，不是能力；
+  · blind11–25：**首跑**才代表泛化（现在：族内新参数 6/8、族外 2–4/8）；
+  · 补完知识后的 8/8 只说明覆盖度，不要在报告里当成"泛化提升"；
+  · 一切读数字必须：清空 _t/work、串行跑（并行会读出假数，实测 324/328 过）。
+
+---------------------------------------------------------------
+5. 快速上手（复制即可）
+---------------------------------------------------------------
+  # 从零到可合成
+  gcc -std=c11 -O2 -o build_aip main.c -lm
+  sh code/build_code_model.sh
+  printf "::act on\n::code synth 写一个程序：读入一行整数（标准输入），输出最大值。\n::quit\n" | ./build_aip --model code/code_model.bin
+
+  # 训练一条事实并验证
+  printf "::teach 麒麟 属于 神兽\n麒麟 属于 什么\n::quit\n" | ./build_aip --model model.bin
+
+  # 全套验收
+  sh tests/all.sh && AIP_CAPBENCH=1 sh tests/capbench.sh
