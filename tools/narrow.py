@@ -35,6 +35,7 @@ def ops_of(out):
 
 def requirement_phrase(desc):
     tail = re.split(r"[，,]", desc)[-1].strip()
+    tail = tail.strip("。．.!！?？;；:： ")
     return tail if len(tail) >= 4 else desc.strip()
 
 
@@ -98,9 +99,59 @@ def hidden_pass_count(model=None):
         return -1
 
 
+
+def sweep(which):
+    """逐个候选单独评估（副本模型），返回 [(cand, score_delta)]。"""
+    base = measure(which)
+    cands = gen_candidates(which)
+    seen, uniq = set(), []
+    for c in cands:
+        key = (c["op"], c["phrase"])
+        if key in seen:
+            continue
+        seen.add(key)
+        uniq.append(c)
+    results = []
+    for c in uniq:
+        if not build_cand_model([c]):
+            continue
+        got = measure(which, CAND_MODEL)
+        results.append((c, got - base, got))
+        print("   %-14s 排除「%s」→ %d/8（%+d）" % (c["name"], c["phrase"], got, got - base))
+    results.sort(key=lambda x: -x[1])
+    return base, results
+
+
+def hidden_pass_count_by_rules(rules):
+    if not build_cand_model(rules):
+        return -1
+    return hidden_pass_count(CAND_MODEL)
+
+def apply_rules(rules):
+    with open(os.path.join(ROOT, "code", "knowledge", "compose.triples"), "a",
+              encoding="utf-8") as f:
+        f.write("\n# §6.848 narrow.py 批量评估后采纳（单条提升，隐藏组不掉）\n")
+        for c in rules:
+            f.write("%s\t排除\t%s\n" % (c["op"], c["phrase"]))
+    subprocess.run(["sh", "code/build_code_model.sh"], cwd=ROOT,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
 def main(argv):
     which = argv[argv.index("--set") + 1] if "--set" in argv else "28"
     base = measure(which)
+    if "--sweep" in argv:
+        base, res = sweep(which)
+        good = [c for c, d, g in res if d > 0]
+        print("基线 %d/8；有提升的候选 %d 条" % (base, len(good)))
+        if good:
+            hid = hidden_pass_count_by_rules(good)
+            print("采纳后隐藏组 = %d/328" % hid)
+            if hid >= 328:
+                apply_rules(good)
+                print("已采纳 %d 条并重建；新基线 = %d/8" % (len(good), measure(which)))
+            else:
+                print("隐藏组掉了 ⇒ 不采纳")
+        return 0
     cands = gen_candidates(which)
     print("候选规则 %d 条；基线 blind%s = %d/8" % (len(cands), which, base))
     for c in cands:
