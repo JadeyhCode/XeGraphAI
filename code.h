@@ -1069,6 +1069,31 @@ static inline int code_chain(AI *ai, const char *desc, int min_ops, int need_par
                         }
                         break;
                     }
+                    /* §6.825 参数可以**长在匹配片段里/紧跟其后**（"第[五]小"）：关键词是模式，数字在命中串里。
+                     * 默认**关**（AIP_PARAM_INSIDE=1 才开）：它改变的是“参数从哪来”，会影响老知识，
+                     * 所以只在反统一（tools/generalize.py）那条路上打开。 */
+                    if (getenv("AIP_PARAM_INSIDE") && got < has_param && got == 0 && best_len > 0) {
+                        for (size_t off = 0; off < best_len && got < has_param; ++off) {
+                            int cv3 = code_cn_num(desc + best_pos + off);
+                            if (cv3 > 0) {
+                                snprintf(pbufs[n][0], sizeof pbufs[0][0], "%d", cv3);
+                                got++;
+                                break;
+                            }
+                            if (desc[best_pos + off] >= '0' && desc[best_pos + off] <= '9') {
+                                snprintf(pbufs[n][0], sizeof pbufs[0][0], "%c", desc[best_pos + off]);
+                                got++;
+                                break;
+                            }
+                        }
+                    }
+                    if (getenv("AIP_PARAM_INSIDE") && got < has_param && got == 0) {
+                        int cv2 = code_cn_num(desc + best_pos + best_len);
+                        if (cv2 > 0) {
+                            snprintf(pbufs[n][0], sizeof pbufs[0][0], "%d", cv2);
+                            got++;
+                        }
+                    }
                     /* §6.812 中文数字：关键词**正前面**的“七/八/十”也算参数值（"七进制"）。 */
                     if (got < has_param && got == 0 && best_pos >= 3) {
                         int cv = code_cn_num(desc + best_pos - 3);

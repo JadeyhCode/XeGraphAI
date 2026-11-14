@@ -270,3 +270,4 @@ selfboot|sh tests/selfboot.sh
 codepat|gcc -std=c11 -O2 -Wall -Wextra -Werror -o build_codepat tools/codepat.c -lm && ./build_codepat
 selfserve|sh tests/selfserve.sh
 blind22|python3 tools/code_blind22.py
+codegeneral|sh tests/codegeneral.sh
