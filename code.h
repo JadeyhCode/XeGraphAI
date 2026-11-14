@@ -1072,7 +1072,16 @@ static inline int code_chain(AI *ai, const char *desc, int min_ops, int need_par
                     /* §6.825 参数可以**长在匹配片段里/紧跟其后**（"第[五]小"）：关键词是模式，数字在命中串里。
                      * 默认**关**（AIP_PARAM_INSIDE=1 才开）：它改变的是“参数从哪来”，会影响老知识，
                      * 所以只在反统一（tools/generalize.py）那条路上打开。 */
-                    if (getenv("AIP_PARAM_INSIDE") && got < has_param && got == 0 && best_len > 0) {
+                    int has_pp = 0;
+                    {
+                        uint8_t rid_pp = rel_id_of(ai, "模式参数", 0);
+                        if (rid_pp >= REL_DYN_BASE) {
+                            uint8_t d_pp = (uint8_t)(rid_pp - REL_DYN_BASE + 1);
+                            for (size_t j = 0; j < t->count && !has_pp; ++j)
+                                if (token_assocs_ro(t)[j].main && token_assocs_ro(t)[j].dyn == d_pp) has_pp = 1;
+                        }
+                    }
+                    if ((getenv("AIP_PARAM_INSIDE") || has_pp) && got < has_param && got == 0 && best_len > 0) {
                         for (size_t off = 0; off < best_len && got < has_param; ++off) {
                             int cv3 = code_cn_num(desc + best_pos + off);
                             if (cv3 > 0) {
@@ -1087,7 +1096,7 @@ static inline int code_chain(AI *ai, const char *desc, int min_ops, int need_par
                             }
                         }
                     }
-                    if (getenv("AIP_PARAM_INSIDE") && got < has_param && got == 0) {
+                    if ((getenv("AIP_PARAM_INSIDE") || (t->name && strchr(t->name, 123))) && got < has_param && got == 0) {
                         int cv2 = code_cn_num(desc + best_pos + best_len);
                         if (cv2 > 0) {
                             snprintf(pbufs[n][0], sizeof pbufs[0][0], "%d", cv2);

@@ -84,6 +84,7 @@ def main():
         kw = (rel.get("关键词") or [""])[0]
         groups.setdefault((sk, tpl, out), []).append((name, kw, consts[0], st))
     made = 0
+    all_tri = []
     CN_NUM = {c: i + 1 for i, c in enumerate(CN)}
     for key, members in groups.items():
         if len(members) < 2:
@@ -140,7 +141,9 @@ def main():
         gstmt = re.sub(r"\d+", _repl, members[0][3])
         gname = "运算:概念_" + re.sub(r"\W+", "_", pat)[:24]
         tpl = (ops[members[0][0]].get("模板") or ["?"])[0]
-        tri = "".join(f"{gname}\t关键词\t{p}\n" for p in pats_out) + (
+        tri = "".join(f"{gname}\t关键词\t{p}\n" for p in pats_out)
+        tri += f"{gname}\t模式参数\t1\n"
+        tri += (
                f"{gname}\t参数\tP\n"
                f"{gname}\t语句\t{gstmt}\n"
                f"{gname}\t模板\t{tpl}\n")
@@ -156,6 +159,7 @@ def main():
         print(f"  归纳：{names} => {gname}（关键词 {pat}）")
         tf = os.path.join(WORK, "gen.triples")
         open(tf, "w", encoding="utf-8").write(tri)
+        all_tri.append(tri)
         if args.model:
             model = os.path.join(ROOT, args.model) if not os.path.isabs(args.model) else args.model
         else:
@@ -183,13 +187,15 @@ def main():
                 stdin = " ".join(str(x) for x in vals) + "\n"
                 desc = f"写一个程序：读入一行整数（标准输入），输出{kw}。"
                 pa, _ = synth(model_a, desc)
+                exe_a = build(pa, "a") if pa else None
                 pb, _ = synth(model, desc)
-                if not pa or not pb:
+                exe_b = build(pb, "b") if pb else None
+                if not exe_a or not exe_b:
                     ok_taught = False
-                    print(f"    教过的说法合成失败：{kw}（无概念={'有' if pa else '无'} 有概念={'有' if pb else '无'}）")
+                    print(f"    教过的说法合成失败：{kw}（无概念={'有' if exe_a else '无'} 有概念={'有' if exe_b else '无'}）")
                     break
-                oa = run_prog(build(pa, "a"), stdin)
-                ob = run_prog(build(pb, "b"), stdin)
+                oa = run_prog(exe_a, stdin)
+                ob = run_prog(exe_b, stdin)
                 if oa != ob:
                     ok_taught = False
                     print(f"    教过的说法不一致：{kw} 无概念={oa!r} 有概念={ob!r}（输入 {vals}）")
@@ -201,16 +207,17 @@ def main():
         probe = re.sub(r"\{[^}]*\}", "五", pats_out[0])
         desc = f"写一个程序：读入一行整数（标准输入），输出{probe}。"
         pp, _ = synth(model, desc)
+        exe_p = build(pp, "probe") if pp else None
         print(f"    PROBE\t{probe}")
         if pp:
             stdin = "1 2 3\n"
-            got = run_prog(build(pp, "probe"), stdin)
+            got = run_prog(exe_p, stdin)
             print(f"    PROBE_IO\t{stdin.strip()}\t{got}")
         else:
             print("    PROBE_IO\t\t")
     if args.commit and made:
         out = os.path.join(ROOT, "code/knowledge/generalized.triples")
-        shutil.copyfile(os.path.join(WORK, "gen.triples"), out)
+        open(out, "w", encoding="utf-8").write("\n".join(all_tri))
         print(f"\n已写 {out}（重跑 sh code/build_code_model.sh 生效）")
     return 0 if made else 1
 
